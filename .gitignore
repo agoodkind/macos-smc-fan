@@ -1,14 +1,14 @@
-# Build artifacts  
-build/          # Intermediate files
-Products/       # Final binaries
-generated/      # Generated config
-
-# Generated files (created from templates at build time)
+# Build artifacts
+build/
+Products/
+products/
 generated/
-research/
 
-# Local configuration (contains personal Developer ID and Bundle IDs)
+# Local configuration
 config.mk
+
+# Research files
+research/
 
 # Xcode
 xcuserdata/

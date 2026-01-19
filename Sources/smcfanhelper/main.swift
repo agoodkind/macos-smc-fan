@@ -1,12 +1,16 @@
 import Foundation
+#if !canImport_smcfan_config
+import SMCCommon  // SPM build
+import libsmc     // SPM build
+#endif
 
 class SMCFanHelper: NSObject, NSXPCListenerDelegate, SMCFanHelperProtocol {
     let listener: NSXPCListener
     var smcConnection: io_connect_t = 0
     
     override init() {
-        let helperID = String(utf8String: HELPER_ID) ?? ""
-        self.listener = NSXPCListener(machServiceName: helperID)
+        let config = SMCFanConfiguration.default
+        self.listener = NSXPCListener(machServiceName: config.helperBundleID)
         super.init()
         self.listener.delegate = self
     }
