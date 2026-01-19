@@ -27,11 +27,11 @@ The transition from Intel to Apple Silicon moved fan management from a discrete 
 
 #### Intel Architecture
 
-Standard Intel Macs used a dedicated System Management Controller chip. These controllers used simple integer or hexadecimal values for RPM. Writing to the `F0Tg` (Fan 0 Target) key was direct. The OS rarely blocked manual overrides.
+Standard Intel Macs used a dedicated System Management Controller chip. These controllers used simple integer or hexadecimal values for RPM. Writing to the `F0Tg` (Fan 0 Target) key was direct. The OS did not block manual overrides.
 
 #### T2 Security Chip
 
-The T2 chip acted as a bridge. It moved SMC functions to a secure enclave. This added a layer of abstraction between IOKit and the physical fan controller. Control remained relatively open but required more complex SMC key sequences.
+The T2 chip acted as a bridge. It moved SMC functions to a secure enclave. This added a layer of abstraction between `IOKit` and the physical fan controller. Control remained relatively open but required more complex SMC key sequences.
 
 #### M1 and M2 Generation
 
@@ -39,7 +39,7 @@ The SMC is now a firmware-level service within the M-series chip. Apple changed 
 
 #### M3 and M4 (Current)
 
-Hardware and firmware locks are tighter on these models. macOS Sequoia introduced changes that prevent manual mode switching on certain Pro and Max variants. The firmware rejects writes to `F0Md` more aggressively. Higher precision sensors and more aggressive efficiency core (E-core) offloading mean fans stay at 0 RPM longer. Modern fan control requires the helper daemon to maintain a persistent connection to prevent thermalmonitord from reclaiming the mode.
+Hardware and firmware locks are tighter on these models. macOS Sequoia introduced changes that prevent manual mode switching on certain Pro and Max variants. The firmware rejects writes to `F0Md` more aggressively. Higher precision sensors and more aggressive efficiency core (E-core) offloading mean fans stay at 0 RPM longer. Modern fan control requires the helper daemon to maintain a persistent connection to prevent `thermalmonitord` from reclaiming the mode.
 
 #### M5+
 
@@ -59,7 +59,7 @@ Commercial implementations often use XOR encoding for SMC keys (decoded at runti
 
 ### Implementation
 
-The project is implemented in **Swift** with a C library for low-level SMC operations. The Swift code handles XPC communication and privilege escalation, while the C layer directly interfaces with IOKit for hardware access.
+The project is implemented in **Swift** with a C library for low-level SMC operations. The Swift code handles `XPC` communication and privilege escalation, while the C layer directly interfaces with `IOKit` for hardware access.
 
 On Apple Silicon Macs, fan control requires working around macOS's thermal management system. The SMC (System Management Controller) accepts fan speed commands, but only when the system is not in "protected" mode.
 
@@ -73,7 +73,7 @@ The tool uses an unlock sequence with retry logic:
 
 1. Write `Ftst=1` to trigger unlock (always succeeds)
 2. Retry `F0Md=1` writes every 100ms
-3. After ~3-6 seconds, thermalmonitord releases control
+3. After ~3-6 seconds, `thermalmonitord` releases control
 4. `F0Md=1` succeeds, fan control is enabled
 5. Write target RPM to `F0Tg`
 
@@ -82,15 +82,18 @@ This is handled automatically by `smc_unlock_fan_control()` in the C library.
 ### Key Findings
 
 **System Behavior:**
-- Setting `Ftst=0` returns control to thermalmonitord
+
+- Setting `Ftst=0` returns control to `thermalmonitord`
 - Auto mode sets target to minimum RPM while keeping manual control active
 - Fan speeds are clamped to SMC-reported min/max values
 
 **Modern Hardware Constraints (M3/M4):**
+
 - Fans cannot be controlled independently - both fans tend to synchronize to similar speeds despite having separate `F0Tg`/`F1Tg` keys
 - Firmware appears to enforce coupled fan behavior
 
 **Security Requirements:**
+
 - **No SIP disable required** - Works with System Integrity Protection enabled
 - Only requires `com.apple.security.cs.disable-library-validation` entitlement
 - Standard code signing with Developer ID certificate
@@ -180,11 +183,13 @@ cp config.mk.example config.mk
 ### Build
 
 Production build (with code signing):
+
 ```bash
 make all
 ```
 
 Development build (IDE/testing):
+
 ```bash
 HELPER_BUNDLE_ID=io.goodkind.smcfanhelper swift build
 ```
@@ -240,6 +245,7 @@ smcfan (CLI)
 ### Development with Xcode
 
 Open as a Swift Package for full IDE support:
+
 ```bash
 xed .
 ```
@@ -255,7 +261,7 @@ smc-fan/
 │   │   └── main.swift
 │   ├── smcfanhelper/     XPC helper daemon
 │   │   └── main.swift
-│   ├── installer/        SMJobBless installer
+│   ├── installer/        `SMJobBless` installer
 │   │   └── main.swift
 │   ├── common/           Shared Swift code
 │   │   ├── SMCProtocol.swift
