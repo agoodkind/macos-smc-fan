@@ -1,4 +1,5 @@
 # SMC Fan Control Research for Apple Silicon
+
 [![Swift](https://github.com/agoodkind/macos-smc-fan/actions/workflows/swift.yml/badge.svg)](https://github.com/agoodkind/macos-smc-fan/actions/workflows/swift.yml)
 
 ## Motivation
@@ -53,19 +54,22 @@ Untested
 The research combined multiple approaches to understand Apple Silicon's fan control mechanism:
 
 **System-Level Analysis:**
+
 - Monitored `IOKit` calls to `AppleSMC` service using dtrace and system tracing
 - Examined `thermalmonitord` behavior through console logs and process monitoring
 - Observed that `F0Md` writes failed with `0x82` (`kSMCBadCommand`) when in mode 3
 - Tested various SMC key combinations and timing patterns
 
 **Binary Analysis:**
-- Used IDA Pro to examine compiled binaries with fan control capabilities
+
+- Used IDA Pro to examine macOS system components (`thermalmonitord`, `AppleSMC` kernel extension)
 - Discovered SMC keys are often XOR-encoded in binaries (decoded at runtime for anti-tampering)
 - Identified the `Ftst` (Force Test) flag as a critical unlock mechanism
 - Found retry patterns in SMC write operations
 
 **Experimental Testing:**
-Through systematic testing on M3 MacBook Pro hardware:
+Through systematic testing on M4 Max MacBook Pro hardware:
+
 - `Ftst=1` write always succeeds, even in mode 3
 - Subsequent `F0Md=1` retries eventually succeed after ~3-6 seconds
 - `thermalmonitord` temporarily yields when `Ftst` is active
