@@ -76,7 +76,7 @@ $(APP_RESOURCES)/$(HELPER_ID): $(SOURCES_DIR)/smcfanhelper/main.swift $(SOURCES_
 		-Xlinker -sectcreate -Xlinker __TEXT -Xlinker __launchd_plist -Xlinker $(GENERATED_DIR)/helper-launchd.plist
 	chmod +x "$@"
 	xattr -cr "$(APP_DIR)"
-	codesign -s "$(CERT_ID)" -f --entitlements entitlements.plist --options runtime --timestamp "$@"
+	codesign -s "$(CERT_ID)" -f --options runtime --timestamp "$@"
 	cp $(GENERATED_DIR)/helper-launchd.plist "$(APP_RESOURCES)/$(HELPER_ID).plist"
 
 # Build installer app  
@@ -90,12 +90,15 @@ $(APP_DIR)/Contents/MacOS/SMCFanInstaller: $(SOURCES_DIR)/installer/main.swift $
 		-framework Security \
 		-framework ServiceManagement
 	@xattr -cr "$@"
-	codesign -s "$(CERT_ID)" -f --entitlements entitlements.plist --identifier "$(INSTALLER_ID)" --timestamp "$@"
+	codesign -s "$(CERT_ID)" -f --identifier "$(INSTALLER_ID)" --timestamp "$@"
 
-# Copy app Info.plist
-$(APP_CONTENTS)/Info.plist: templates/Info.plist
+# Generate app Info.plist from template
+$(APP_CONTENTS)/Info.plist: templates/Info.plist.template config.mk
 	@mkdir -p $(APP_CONTENTS)
-	cp "$<" "$@"
+	sed -e 's|@@HELPER_ID@@|$(HELPER_ID)|g' \
+	    -e 's|@@TEAM_ID@@|$(TEAM_ID)|g' \
+	    -e 's|@@BUNDLE_ID_PREFIX@@|$(BUNDLE_ID_PREFIX)|g' \
+	    $< > $@
 	xattr -cr "$@"
 
 # Build CLI tool
@@ -107,7 +110,7 @@ $(PRODUCTS_DIR)/smcfan: $(SOURCES_DIR)/smcfan/main.swift $(SOURCES_DIR)/common/S
 		$(SOURCES_DIR)/common/SMCProtocol.swift \
 		$(SOURCES_DIR)/smcfan/main.swift \
 		$(LDFLAGS_XPC)
-	codesign -s "$(CERT_ID)" -f --entitlements entitlements.plist --identifier smcfan --timestamp "$@"
+	codesign -s "$(CERT_ID)" -f --identifier smcfan --timestamp "$@"
 
 # Install the app (copies to /Applications)
 install: $(APP_DIR)/Contents/MacOS/SMCFanInstaller $(APP_RESOURCES)/$(HELPER_ID) $(APP_CONTENTS)/Info.plist
