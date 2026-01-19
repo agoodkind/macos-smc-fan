@@ -65,7 +65,7 @@ On Apple Silicon Macs, fan control requires working around macOS's thermal manag
 
 ### The Challenge
 
-When macOS's `thermalmonitord` actively controls fans, it sets the fan mode to 3. In this state, direct writes to change the fan mode fail with SMC error `0x82` (kSMCBadCommand) - the SMC firmware itself rejects the command.
+When macOS's `thermalmonitord` actively controls fans, it sets the fan mode to 3. In this state, direct writes to change the fan mode fail with SMC error `0x82` (`kSMCBadCommand`) - the SMC firmware itself rejects the command.
 
 ### The Solution
 
