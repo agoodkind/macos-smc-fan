@@ -1,0 +1,213 @@
+# SMC Fan Control for Apple Silicon
+
+Control fan speeds on Apple Silicon Macs (M1/M2/M3/M4) via command line.
+
+## ⚠️ Warning
+
+**For educational and research purposes only.** This software:
+
+- Can cause **hardware damage** if fans are set incorrectly
+- May interfere with macOS thermal management
+- Is provided **without any warranty**
+- Is **not affiliated with or endorsed by Apple Inc.**
+
+**Use entirely at your own risk.** Monitor system temperatures carefully. Not intended for production use.
+
+## Quick Start
+
+### Prerequisites
+
+- Xcode Command Line Tools: `xcode-select --install`
+- **Paid Apple Developer account** - Required for Developer ID certificate
+- Valid Apple Developer ID certificate for code signing
+- Your Apple Team ID (find at <https://developer.apple.com/account>)
+
+### Configuration
+
+Copy the example config and customize with your credentials:
+
+```bash
+cp config.mk.example config.mk
+# Edit config.mk with your values:
+#   CERT_ID - Your Developer ID certificate (find with: security find-identity -v -p codesigning)
+#   TEAM_ID - Your Apple Team ID
+#   BUNDLE_ID_PREFIX - Your bundle identifier prefix (e.g., com.yourname)
+```
+
+### Build
+
+```bash
+make clean && make
+```
+
+### Install
+
+```bash
+./build/SMCFanHelper.app/Contents/MacOS/SMCFanInstaller
+# Enter password when prompted
+```
+
+The installer uses `SMJobBless` to install a privileged helper daemon.
+
+### Usage
+
+```bash
+# List fans
+./build/smcfan list
+
+# Set fan speed
+./build/smcfan set 0 4500    # Set fan 0 to 4500 RPM
+
+# Set to minimum (auto-like)
+./build/smcfan auto 0        # Set fan 0 to minimum RPM
+```
+
+### Uninstall
+
+Replace `YOUR_BUNDLE_ID` with your configured bundle identifier prefix:
+
+```bash
+sudo launchctl unload /Library/LaunchDaemons/YOUR_BUNDLE_ID.smcfanhelper.plist
+sudo rm /Library/PrivilegedHelperTools/YOUR_BUNDLE_ID.smcfanhelper
+sudo rm /Library/LaunchDaemons/YOUR_BUNDLE_ID.smcfanhelper.plist
+```
+
+## Background
+
+### Evolution of Mac Fan Control
+
+The transition from Intel to Apple Silicon moved fan management from a discrete chip to a component integrated directly into the SoC. System management logic shifted from the H8/SMC controller to the Always-On (AOP) subsystem.
+
+#### Intel Architecture
+
+Standard Intel Macs used a dedicated System Management Controller chip. These controllers used simple integer or hexadecimal values for RPM. Writing to the `F0Tg` (Fan 0 Target) key was direct. The OS rarely blocked manual overrides.
+
+#### T2 Security Chip
+
+The T2 chip acted as a bridge. It moved SMC functions to a secure enclave. This added a layer of abstraction between IOKit and the physical fan controller. Control remained relatively open but required more complex SMC key sequences.
+
+#### M1 and M2 Generation
+
+The SMC is now a firmware-level service within the M-series chip. Apple changed the data type for RPM keys to 4-byte IEEE 754 floating-point values. The `Ftst` (Force Test) key became a mandatory toggle. The system began enforcing "System Mode" (mode 3) through thermalmonitord. Manual control requires a specific race condition or timing window where the system releases the lock.
+
+#### M3 and M4 (Current)
+
+Hardware and firmware locks are tighter on these models. macOS Sequoia introduced changes that prevent manual mode switching on certain Pro and Max variants. The firmware rejects writes to `F0Md` more aggressively. Higher precision sensors and more aggressive efficiency core (E-core) offloading mean fans stay at 0 RPM longer. Modern fan control requires the helper daemon to maintain a persistent connection to prevent thermalmonitord from reclaiming the mode.
+
+#### M5+
+
+Untested
+
+## How It Works
+
+On Apple Silicon Macs, fan control requires working around macOS's thermal management system. The SMC (System Management Controller) accepts fan speed commands, but only when the system is not in "protected" mode.
+
+### The Challenge
+
+When macOS's `thermalmonitord` actively controls fans, it sets the fan mode to 3. In this state, direct writes to change the fan mode fail with SMC error `0x82` (kSMCBadCommand) - the SMC firmware itself rejects the command.
+
+### The Solution
+
+The tool uses an unlock sequence with retry logic:
+
+1. Write `Ftst=1` to trigger unlock (always succeeds)
+2. Retry `F0Md=1` writes every 100ms
+3. After ~3-6 seconds, thermalmonitord releases control
+4. `F0Md=1` succeeds, fan control is enabled
+5. Write target RPM to `F0Tg`
+
+This is handled automatically by `smc_unlock_fan_control()` in `smcfan_common.c`.
+
+### Notes
+
+- Setting `Ftst=0` returns control to thermalmonitord
+- Auto mode sets target to minimum RPM while keeping manual control active
+- Fan speeds are clamped to SMC-reported min/max values
+
+## Project Structure
+
+### Runtime Architecture
+
+```text
+smcfan (CLI)
+  │
+  │ XPC
+  └──→ SMCFanHelper (privileged daemon)
+        │
+        │ IOKit
+        └──→ AppleSMC (kernel driver)
+              │
+              └──→ SMC firmware
+```
+
+### Directory Layout
+
+```text
+smc-fan/
+├── src/                    Source files
+│   ├── smcfan.m           CLI tool (XPC client)
+│   ├── smcfan_helper.m    Privileged helper daemon
+│   ├── smcfan_common.c/h  SMC library with unlock logic
+│   └── installer.m        SMJobBless installer
+├── templates/             Template files with placeholders
+│   ├── helper-info.plist.template
+│   ├── helper-launchd.plist.template
+│   └── smcfan_config.h.template
+├── generated/             Auto-generated (gitignored)
+│   ├── smcfan_config.h
+│   ├── helper-info.plist
+│   └── helper-launchd.plist
+├── build/                 Build artifacts (gitignored)
+├── config.mk.example      Template for your credentials
+├── config.mk              Your credentials (gitignored)
+└── Makefile
+```
+
+## Technical Details
+
+### SMC Keys
+
+| Key | Type | Description |
+| --- | --- | --- |
+| `FNum` | uint8 | Number of fans |
+| `F%dAc` | float | Actual RPM (read-only) |
+| `F%dTg` | float | Target RPM |
+| `F%dMn` | float | Minimum RPM |
+| `F%dMx` | float | Maximum RPM |
+| `F%dMd` | uint8 | Mode (0=auto, 1=manual, 3=system) |
+| `Ftst` | uint8 | Force/test flag |
+
+Apple Silicon uses IEEE 754 float (4 bytes, little-endian) for RPM values.
+
+### IOKit Communication
+
+- Service: `AppleSMC`
+- Connection type: `0`
+- Selector: `2`
+- Struct size: `80 bytes`
+
+Commands:
+
+- `9` - Read key info
+- `5` - Read value
+- `6` - Write value
+
+### Data Structure
+
+```c
+typedef struct {
+    uint32_t key;                    // 0-3
+    char vers[4];                    // 4-7
+    char pLimitData[16];             // 8-23
+    uint8_t padding0[4];             // 24-27
+    SMCKeyData_keyInfo_t keyInfo;    // 28-39 (dataSize at offset 28)
+    uint8_t result;                  // 40
+    uint8_t status;                  // 41
+    uint8_t data8;                   // 42 (command byte)
+    uint8_t padding1;                // 43
+    uint32_t data32;                 // 44-47
+    SMCBytes_t bytes;                // 48-79
+} SMCKeyData_t;  // Total: 80 bytes
+```
+
+**Critical:** Field alignment must be exact. `keyInfo.dataSize` at offset 28, `data8` at offset 42.
