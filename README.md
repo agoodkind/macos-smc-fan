@@ -35,7 +35,7 @@ The T2 chip acted as a bridge. It moved SMC functions to a secure enclave. This 
 
 #### M1 and M2 Generation
 
-The SMC is now a firmware-level service within the M-series chip. Apple changed the data type for RPM keys to 4-byte IEEE 754 floating-point values. The `Ftst` (Force Test) key became a mandatory toggle. The system began enforcing "System Mode" (mode 3) through thermalmonitord. Manual control requires a specific race condition or timing window where the system releases the lock.
+The SMC is now a firmware-level service within the M-series chip. Apple changed the data type for RPM keys to 4-byte IEEE 754 floating-point values. The `Ftst` (Force Test) key became a mandatory toggle. The system began enforcing "System Mode" (mode 3) through `thermalmonitord`. Manual control requires a specific race condition or timing window where the system releases the lock.
 
 #### M3 and M4 (Current)
 
@@ -79,11 +79,21 @@ The tool uses an unlock sequence with retry logic:
 
 This is handled automatically by `smc_unlock_fan_control()` in the C library.
 
-### Notes
+### Key Findings
 
+**System Behavior:**
 - Setting `Ftst=0` returns control to thermalmonitord
 - Auto mode sets target to minimum RPM while keeping manual control active
 - Fan speeds are clamped to SMC-reported min/max values
+
+**Modern Hardware Constraints (M3/M4):**
+- Fans cannot be controlled independently - both fans tend to synchronize to similar speeds despite having separate `F0Tg`/`F1Tg` keys
+- Firmware appears to enforce coupled fan behavior
+
+**Security Requirements:**
+- **No SIP disable required** - Works with System Integrity Protection enabled
+- Only requires `com.apple.security.cs.disable-library-validation` entitlement
+- Standard code signing with Developer ID certificate
 
 ## Technical Details
 
