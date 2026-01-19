@@ -1,25 +1,9 @@
-#ifndef SMCFAN_COMMON_H
-#define SMCFAN_COMMON_H
+#ifndef SMC_H
+#define SMC_H
 
 #include <IOKit/IOKitLib.h>
 #include <stdint.h>
 #include <stdbool.h>
-
-#ifdef __OBJC__
-#import <Foundation/Foundation.h>
-
-@protocol SMCFanHelperProtocol
-- (void)smcOpenWithReply:(void (^)(BOOL success, NSString *error))reply;
-- (void)smcCloseWithReply:(void (^)(BOOL success, NSString *error))reply;
-- (void)smcReadKey:(NSString *)key reply:(void (^)(BOOL success, float value, NSString *error))reply;
-- (void)smcWriteKey:(NSString *)key value:(float)value reply:(void (^)(BOOL success, NSString *error))reply;
-- (void)smcGetFanCountWithReply:(void (^)(BOOL success, NSUInteger count, NSString *error))reply;
-- (void)smcGetFanInfo:(NSUInteger)fanIndex reply:(void (^)(BOOL success, NSDictionary *info, NSString *error))reply;
-// Fan control methods
-- (void)smcSetFanRPM:(NSUInteger)fanIndex rpm:(float)rpm reply:(void (^)(BOOL success, NSString *error))reply;
-- (void)smcSetFanAuto:(NSUInteger)fanIndex reply:(void (^)(BOOL success, NSString *error))reply;
-@end
-#endif
 
 // SMC IOKit constants
 // Selector 2 is used for SMC writes (per existing commercial tools)
@@ -58,9 +42,9 @@ typedef struct {
 kern_return_t smc_open(io_connect_t *conn);
 kern_return_t smc_call(io_connect_t conn, SMCKeyData_t *in, SMCKeyData_t *out);
 kern_return_t smc_read_key(io_connect_t conn, const char *key, SMCBytes_t val, uint32_t *size);
-kern_return_t smc_write_key(io_connect_t conn, const char *key, SMCBytes_t val, uint32_t size);
+kern_return_t smc_write_key(io_connect_t conn, const char *key, const SMCBytes_t val, uint32_t size);
 kern_return_t smc_unlock_fan_control(io_connect_t conn, int max_retries, double timeout_seconds);
-float bytes_to_float(SMCBytes_t val, uint32_t size);
+float bytes_to_float(const SMCBytes_t val, uint32_t size);
 void float_to_bytes(float f, SMCBytes_t val, uint32_t size);
 
 // Fan-related SMC keys
@@ -72,4 +56,4 @@ void float_to_bytes(float f, SMCBytes_t val, uint32_t size);
 #define SMC_KEY_FAN_MODE "F%dMd"   // Mode (0=auto, 1=manual)
 #define SMC_KEY_FAN_TEST "Ftst"    // Force/test mode flag (must be 1 for writes)
 
-#endif // SMCFAN_COMMON_H
+#endif // SMC_H

@@ -12,7 +12,8 @@ $(error HELPER_ID not set. Copy config.mk.example to config.mk and configure you
 endif
 
 # Directories
-SRC_DIR = src
+SOURCES_DIR = Sources
+INCLUDE_DIR = Include
 TEMPLATES_DIR = templates
 GENERATED_DIR = generated
 BUILD_DIR = build
@@ -23,9 +24,9 @@ APP_RESOURCES = $(APP_CONTENTS)/Library/LaunchServices
 
 # Compiler flags
 CC = clang
-OBJC = clang
-CFLAGS = -Wall -Werror -O2
-OBJCFLAGS = -fobjc-arc -Wall -Werror -O2
+SWIFT = swiftc
+CFLAGS = -Wall -Werror -O2 -I$(SOURCES_DIR)/libsmc
+SWIFTFLAGS = -O -parse-as-library -import-objc-header $(INCLUDE_DIR)/SMCFan-Bridging-Header.h -I$(SOURCES_DIR)/libsmc -I$(GENERATED_DIR)
 LDFLAGS_COMMON = -framework Foundation
 LDFLAGS_IOKIT = $(LDFLAGS_COMMON) -framework IOKit -framework CoreFoundation
 LDFLAGS_XPC = $(LDFLAGS_COMMON) -framework Foundation
@@ -35,10 +36,10 @@ LDFLAGS_XPC = $(LDFLAGS_COMMON) -framework Foundation
 
 all: $(BUILD_DIR)/smcfan $(APP_CONTENTS)/Info.plist $(APP_DIR)/Contents/MacOS/SMCFanInstaller $(APP_RESOURCES)/$(HELPER_ID)
 
-# Build shared SMC library
-$(BUILD_DIR)/smcfan_common.o: $(SRC_DIR)/smcfan_common.c $(SRC_DIR)/smcfan_common.h
+# Build SMC library
+$(BUILD_DIR)/smc.o: $(SOURCES_DIR)/libsmc/smc.c $(SOURCES_DIR)/libsmc/smc.h
 	@mkdir -p $(BUILD_DIR)
-	$(OBJC) $(OBJCFLAGS) -x objective-c -c $(SRC_DIR)/smcfan_common.c -o $@
+	$(CC) $(CFLAGS) -c $(SOURCES_DIR)/libsmc/smc.c -o $@
 
 # Generate configuration header from template
 $(GENERATED_DIR)/smcfan_config.h: $(TEMPLATES_DIR)/smcfan_config.h.template config.mk
@@ -61,28 +62,21 @@ $(GENERATED_DIR)/helper-launchd.plist: $(TEMPLATES_DIR)/helper-launchd.plist.tem
 	    $(TEMPLATES_DIR)/helper-launchd.plist.template > $@
 
 # Build XPC helper daemon
-$(BUILD_DIR)/smcfan_helper.o: $(SRC_DIR)/smcfan_helper.m $(SRC_DIR)/smcfan_common.h $(GENERATED_DIR)/smcfan_config.h
-	@mkdir -p $(BUILD_DIR)
-	$(OBJC) $(OBJCFLAGS) -c $(SRC_DIR)/smcfan_helper.m -o $@ -I$(SRC_DIR) -I$(GENERATED_DIR)
-
-$(APP_RESOURCES)/$(HELPER_ID): $(BUILD_DIR)/smcfan_helper.o $(BUILD_DIR)/smcfan_common.o $(GENERATED_DIR)/helper-info.plist $(GENERATED_DIR)/helper-launchd.plist
+$(APP_RESOURCES)/$(HELPER_ID): $(SOURCES_DIR)/smcfanhelper/main.swift $(SOURCES_DIR)/common/SMCProtocol.swift $(SOURCES_DIR)/libsmc/smc.h $(BUILD_DIR)/smc.o $(GENERATED_DIR)/smcfan_config.h $(GENERATED_DIR)/helper-info.plist $(GENERATED_DIR)/helper-launchd.plist $(INCLUDE_DIR)/SMCFan-Bridging-Header.h
 	@mkdir -p $(APP_RESOURCES)
-	$(OBJC) $(OBJCFLAGS) -o $@ $(BUILD_DIR)/smcfan_helper.o $(BUILD_DIR)/smcfan_common.o $(LDFLAGS_IOKIT) \
-		-sectcreate __TEXT __info_plist $(GENERATED_DIR)/helper-info.plist \
-		-sectcreate __TEXT __launchd_plist $(GENERATED_DIR)/helper-launchd.plist
+	$(SWIFT) $(SWIFTFLAGS) -o $@ $(SOURCES_DIR)/common/SMCProtocol.swift $(SOURCES_DIR)/smcfanhelper/main.swift $(BUILD_DIR)/smc.o $(LDFLAGS_IOKIT) \
+		-Xlinker -sectcreate -Xlinker __TEXT -Xlinker __info_plist -Xlinker $(GENERATED_DIR)/helper-info.plist \
+		-Xlinker -sectcreate -Xlinker __TEXT -Xlinker __launchd_plist -Xlinker $(GENERATED_DIR)/helper-launchd.plist
 	chmod +x "$@"
 	xattr -cr "$(APP_DIR)"
 	codesign -s "$(CERT_ID)" -f --entitlements entitlements.plist --options runtime --timestamp "$@"
 	cp $(GENERATED_DIR)/helper-launchd.plist "$(APP_RESOURCES)/$(HELPER_ID).plist"
 
 # Build installer app
-$(BUILD_DIR)/installer.o: $(SRC_DIR)/installer.m $(GENERATED_DIR)/smcfan_config.h
-	@mkdir -p $(BUILD_DIR)
-	$(OBJC) $(OBJCFLAGS) -c $(SRC_DIR)/installer.m -o $@ -I$(GENERATED_DIR)
-
-$(APP_DIR)/Contents/MacOS/SMCFanInstaller: $(BUILD_DIR)/installer.o
+$(APP_DIR)/Contents/MacOS/SMCFanInstaller: $(SOURCES_DIR)/installer/main.swift $(GENERATED_DIR)/smcfan_config.h $(INCLUDE_DIR)/SMCFan-Bridging-Header.h
 	@mkdir -p $(APP_MACOS)
-	$(OBJC) $(OBJCFLAGS) -o $@ $(BUILD_DIR)/installer.o $(LDFLAGS_COMMON) -framework Security -framework ServiceManagement
+	$(SWIFT) $(SWIFTFLAGS) -o $@ $(SOURCES_DIR)/installer/main.swift $(LDFLAGS_COMMON) -framework Security -framework ServiceManagement
+	@touch "$@"
 	xattr -cr "$(APP_DIR)"
 	xattr -cr "$@"
 	codesign -s "$(CERT_ID)" -f --entitlements entitlements.plist --identifier "$(INSTALLER_ID)" --timestamp "$@"
@@ -94,12 +88,9 @@ $(APP_CONTENTS)/Info.plist: SMCFanHelper.app/Contents/Info.plist
 	xattr -cr "$@"
 
 # Build CLI tool
-$(BUILD_DIR)/smcfan.o: $(SRC_DIR)/smcfan.m $(GENERATED_DIR)/smcfan_config.h
+$(BUILD_DIR)/smcfan: $(SOURCES_DIR)/smcfan/main.swift $(SOURCES_DIR)/common/SMCProtocol.swift $(GENERATED_DIR)/smcfan_config.h $(INCLUDE_DIR)/SMCFan-Bridging-Header.h
 	@mkdir -p $(BUILD_DIR)
-	$(OBJC) $(OBJCFLAGS) -c $(SRC_DIR)/smcfan.m -o $@ -I$(SRC_DIR) -I$(GENERATED_DIR)
-
-$(BUILD_DIR)/smcfan: $(BUILD_DIR)/smcfan.o
-	$(OBJC) $(OBJCFLAGS) -o $@ $(BUILD_DIR)/smcfan.o $(LDFLAGS_XPC)
+	$(SWIFT) $(SWIFTFLAGS) -o $@ $(SOURCES_DIR)/common/SMCProtocol.swift $(SOURCES_DIR)/smcfan/main.swift $(LDFLAGS_XPC)
 	codesign -s "$(CERT_ID)" -f --entitlements entitlements.plist --identifier smcfan --timestamp "$@"
 
 # Install the app (copies to /Applications)
@@ -119,9 +110,11 @@ test-cli: $(BUILD_DIR)/smcfan
 clean:
 	rm -rf $(BUILD_DIR) $(GENERATED_DIR)
 
-# Build mode 3 unlock test
-$(BUILD_DIR)/test_mode3_unlock: test_mode3_unlock.m $(BUILD_DIR)/smcfan_common.o
-	$(OBJC) $(OBJCFLAGS) -o $@ test_mode3_unlock.m $(BUILD_DIR)/smcfan_common.o $(LDFLAGS_IOKIT)
+# Build mode 3 unlock test (if test file exists in research/)
+ifneq (,$(wildcard research/test_mode3_unlock.m))
+$(BUILD_DIR)/test_mode3_unlock: research/test_mode3_unlock.m $(BUILD_DIR)/smc.o
+	$(CC) $(CFLAGS) -x objective-c -fobjc-arc -o $@ research/test_mode3_unlock.m $(BUILD_DIR)/smc.o $(LDFLAGS_IOKIT)
+endif
 
 # Test mode 3 unlock with retry logic
 test-unlock: $(BUILD_DIR)/test_mode3_unlock
