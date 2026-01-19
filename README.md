@@ -116,13 +116,13 @@ The project is implemented in **Swift** with a C library for low-level SMC opera
 
 | Key | Type | Description |
 | --- | --- | --- |
-| `FNum` | uint8 | Number of fans |
-| `F%dAc` | float | Actual RPM (read-only) |
-| `F%dTg` | float | Target RPM |
-| `F%dMn` | float | Minimum RPM |
-| `F%dMx` | float | Maximum RPM |
-| `F%dMd` | uint8 | Mode (0=auto, 1=manual, 3=system) |
-| `Ftst` | uint8 | Force/test flag |
+| `FNum` | `uint8` | Number of fans |
+| `F%dAc` | `float` | Actual RPM (read-only) |
+| `F%dTg` | `float` | Target RPM |
+| `F%dMn` | `float` | Minimum RPM |
+| `F%dMx` | `float` | Maximum RPM |
+| `F%dMd` | `uint8` | Mode (0=auto, 1=manual, 3=system) |
+| `Ftst` | `uint8` | Force/test flag |
 
 **Data Formats:**
 
