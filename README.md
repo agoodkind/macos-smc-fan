@@ -4,7 +4,7 @@
 
 ## Motivation
 
-Prior to this research, **no public documentation existed** for controlling fan speeds on modern Apple Silicon Macs (M1-M4). While commercial tools existed, the underlying mechanism—particularly how to bypass macOS's thermal management system (`thermalmonitord`)—remained undocumented.
+Prior to this research, no public documentation existed for manual fan **control** or persistent writes (e.g., manipulating fan speed) on Apple Silicon. While **reading** sensor data was documented [^6][^9], as far as I can tell, nobody had documented how to bypass the `thermalmonitord` lock to override system policy.
 
 This project documents the **reverse engineering process**, the discovered **unlock mechanism**, and provides a working implementation. The research reveals how `thermalmonitord` enforces "protected mode" and the specific SMC key sequence required to regain manual control.
 
@@ -25,41 +25,41 @@ Beyond fan control, this work demonstrates **SMC research methodologies** that c
 
 ### Key Terms
 
-- **SMC (System Management Controller)**: A microcontroller (Intel/T2) or integrated firmware component (Apple Silicon) that manages low-level hardware: thermal sensors, fan speeds, power states, and other system functions. On Intel, it's discrete; on Apple Silicon, it's part of the SoC.
-- **SoC (System-on-Chip)**: Apple Silicon (M1/M2/M3/M4/M5+) integrates CPU, GPU, Neural Engine, memory controllers, and management components into a single chip, unlike Intel Macs which have separate components.
-- **RTKit**: Apple's embedded firmware backend that manages the integrated SMC on Apple Silicon, replacing the older ACPI-based interface used on Intel.
-- **Daemon**: A background system process (e.g., `thermalmonitord`) that runs with elevated privileges and coordinates system behavior.
-- **IOKit**: Apple's macOS kernel framework for hardware communication and device access.
+- **SMC (System Management Controller)**: A microcontroller (Legacy/T2) or integrated firmware component (Apple Silicon) that manages low-level hardware: thermal sensors, fan speeds, power states, and other system functions [^7]. On legacy hardware, it's discrete; on Apple Silicon, it's part of the SoC.
+- **SoC (System-on-Chip)**: Apple Silicon (M1-M5+) integrates CPU, GPU, Neural Engine, memory controllers, and management components into a single chip, unlike earlier Macs which had separate components. See Apple's documentation on boot security for more on SoC architecture [^3].
+- **RTKit**: Apple's embedded firmware backend that manages the integrated SMC on Apple Silicon [^6], replacing the older ACPI-based interface used previously.
+- **Daemon**: A background system process (e.g., `thermalmonitord`) that runs with elevated privileges and coordinates system behavior. It monitors thermal pressure [^1] and publishes state changes [^2].
+- **IOKit**: Apple's macOS kernel framework for hardware communication and device access [^2].
 
 ### Evolution of macOS SMC-based Fan Control
 
-The transition from Intel to Apple Silicon moved fan management from a discrete chip to a component integrated directly into the SoC. System management logic shifted from the H8/SMC controller to the Always-On (AOP) subsystem.
+The transition to Apple Silicon moved fan management from a discrete chip to a component integrated directly into the SoC [^3]. System management logic shifted from the H8/SMC controller to the Always-On (AOP) subsystem.
 
-#### Intel Architecture
+#### Legacy Architecture
 
-Standard Intel Macs used a dedicated System Management Controller chip. Writing to fan control keys like `F0Tg` (Fan 0 Target) was direct and the OS didn't block manual overrides. Thermal management was automatic: the SMC read temperature sensors and adjusted fan speed.
+Standard Macs used a dedicated System Management Controller chip [^7][^9]. Writing to fan control keys like `F0Tg` (Fan 0 Target) was direct and the OS didn't block manual overrides. Thermal management was automatic: the SMC read temperature sensors and adjusted fan speed.
 
 #### T2 Security Chip
 
-The T2 chip added a security layer. SMC functions moved into this separate processor, adding abstraction between the OS and hardware. Manual fan control still worked but required different SMC key sequences.
+The T2 chip added a security layer. SMC functions moved into this separate processor [^3], adding abstraction between the OS and hardware. Manual fan control still worked but required different SMC key sequences.
 
-#### M1 and M2 Generation
+#### M1-M4 Generation
 
-With Apple Silicon, Apple integrated SMC functionality into the main chip itself. Apple also shifted to a new approach: instead of the SMC independently managing fans, a background system process called `thermalmonitord` now coordinates thermal policy. This process actively prevents direct fan control by setting fans to "system mode" and blocking attempts to change this. To regain manual control, the unlock sequence must persuade `thermalmonitord` to temporarily release the lock.
+With Apple Silicon, Apple integrated SMC functionality into the main chip itself [^6]. Apple also shifted to a new approach: instead of the SMC independently managing fans, a background system process called `thermalmonitord` now coordinates thermal policy. This process actively prevents direct fan control by setting fans to "system mode" and blocking attempts to change this. To regain manual control, the unlock sequence must persuade `thermalmonitord` to temporarily release the lock.
 
-Note: A separate process called `thermald` also runs on these Macs. Analysis of its imports shows it monitors power/thermal metrics and publishes **thermal pressure levels** (nominal/fair/serious/critical) via system notifications for apps to react to. It does not directly control fans (that's `thermalmonitord`'s role). It appears that they are complementary: `thermald` reports, `thermalmonitord` acts.
+`thermalmonitord` actively reclaims fan control, requiring a helper process to maintain an active connection and regularly refresh the unlock state.
 
-#### M3 and M4
-
-Thermal management is even more tightly controlled. `thermalmonitord` is more aggressive about reclaiming fan control. Manual control requires a helper process to maintain an active connection and regularly refresh the unlock state.
+Note: A separate process called `thermald` also runs on these Macs. Analysis of its imports shows it monitors power/thermal metrics and publishes **thermal pressure levels** (nominal/fair/serious/critical) via system notifications for apps to react to [^1]. It does not directly control fans (that's `thermalmonitord`'s role). It appears that they are complementary: `thermald` reports, `thermalmonitord` acts.
 
 #### M5+
 
-Untested
+The unlock mechanism and fan control behavior have not been tested on M5 chips. While the same SMC key schema and `thermalmonitord` architecture are expected to be present, verification is needed to confirm compatibility.
 
 ## Research Findings
 
 ### SMC Keys
+
+Prior research [^7][^8][^9] found the following keys, which were verified for Apple Silicon through `dtrace` tracing of `thermalmonitord` and `AppleSMC` kernel extensions, complemented by IDA Pro binary analysis.
 
 | Key | Type | Description |
 | --- | --- | --- |
@@ -73,27 +73,36 @@ Untested
 
 **Data Formats:**
 
-- **Intel Macs**: 2-byte `fpe2` fixed-point (14.2 format, big-endian). The top 14 bits are integer, bottom 2 bits are fractional (divide raw value by 4).
-- **Apple Silicon**: 4-byte IEEE 754 float (little-endian)
+- **Legacy (FPE2) Format**: 2-byte `fpe2` fixed-point (14.2 format, big-endian). The top 14 bits are integer, bottom 2 bits are fractional (divide raw value by 4) [^5].
+- **Apple Silicon**: 4-byte IEEE 754 float (little-endian) [^6].
 
-Cross-platform code must detect and handle both formats. See [Apple SMC](https://cbosoft.github.io/blog/2020/07/17/apple-smc/) and [Asahi Linux SMC Documentation](https://asahilinux.org/docs/hw/soc/smc/) for format details.
+Cross-platform code must detect and handle both formats [^5][^6]. See [Architecture & Research Insights](#architecture--research-insights) for more on how these keys are managed on Apple Silicon.
 
 ### Fan Modes
 
-The `F%dMd` key controls fan behavior:
+The values for the `F%dMd` mode key were identified by monitoring system state transitions during experimental testing and analyzing the decompiled `thermalmonitord` logic.
 
 | Mode | Name | Description |
 | --- | --- | --- |
 | `0` | Auto | System manages fans, target defaults to minimum RPM |
 | `1` | Manual | User controls target RPM via `F%dTg` |
-| `2` | ? | Unknown (possibly Intel-era legacy) |
-| `3` | System | `thermalmonitord` has exclusive control, firmware rejects `F0Md` writes |
+| `2` | ? | Legacy (T2): Forced manual mode; not observed on Apple Silicon |
+| `3` | System | Active mitigation state (AppleCLPC); firmware rejects manual mode changes |
 
-Mode 3 is the default on Apple Silicon when the system is managing thermals. The unlock sequence transitions the system from mode 3 → 0, then allows setting mode 1.
+Mode 3 is the default on Apple Silicon when `thermalmonitord` is managing system thermals. The unlock sequence transitions the system from mode 3 → 0, then allows setting mode 1.
+
+### Architecture & Research Insights
+
+Through disassembly of `thermalmonitord` and `AppleSMC.kext`, several key architectural details were identified:
+
+1. **RTKit Abstraction**: On Apple Silicon, SMC keys like `F0Md` and `Ftst` are not hardcoded in userspace binaries. They are managed by the **RTKit firmware** embedded within the SoC [^6]. The `AppleSMC` kernel driver acts as a transparent bridge to this firmware.
+2. **Property-Based Control**: `thermalmonitord` does not write to SMC keys directly. Instead, it uses high-level Objective-C properties (via `IORegistryEntrySetCFProperty`) to communicate with hardware controllers like **AppleCLPC** (Closed Loop Power Controller) and **ApplePMGR** (Power Manager). It sets "ceilings" and "mitigations" rather than raw RPMs.
+3. **Mode 3 is a State, not a Command**: "System Mode" (`mode 3`) is not a command sent by the daemon. Rather, it is the state *reported* by the RTKit firmware when hardware controllers like `AppleCLPC` are in an active mitigation state. This explains why `thermalmonitord` does not need to "set" mode 3—its very operation causes the hardware to enter and report that state.
+4. **Mode 2 (Legacy)**: While value `2` appears in older SMC tools (like `smcFanControl` [^8]) or community databases [^7] as a "manual override" or "forced" mode for T2-equipped Macs, no references to it were found in the Apple Silicon `thermalmonitord` or driver logic.
 
 ### Discovery Process
 
-Prior work on Intel-based Macs established the basic SMC key schema: `F0Md` for fan mode, `F0Tg` for target RPM, and `Ftst` for force/test state. These keys were accessible via standard `IOKit` calls on Intel hardware but failed on Apple Silicon.
+Prior work established the basic SMC key schema from the Linux kernel `applesmc` driver [^9]: `F0Md` for fan mode, `F0Tg` for target RPM, and `Ftst` for force/test state [^7][^8]. These keys were accessible via standard `IOKit` calls on earlier hardware but failed on Apple Silicon.
 
 Initial attempts to write `F0Md` on M4 hardware returned `0xe00002c2` (`kIOReturnNotPrivileged`). Investigation focused on code signing and permission combinations. This proved to be a dead end: standard Developer ID code signing is sufficient.
 
@@ -101,7 +110,7 @@ System-level tracing using `dtrace` on `thermalmonitord` and `AppleSMC` kernel e
 
 Binary analysis with IDA Pro decompiled `thermalmonitord` and `AppleSMC`, producing tens of thousands of lines of pseudocode. LLMs were employed to analyze this output, searching for patterns in SMC write operations and cross-referencing `Ftst` flag usage. This automated analysis identified `Ftst` as a trigger for thermal management state changes.
 
-Experimental testing confirmed `Ftst=1` writes succeeded unconditionally, even in mode 3. Timed observation of mode state revealed the unlock pattern:
+Experimental testing identified `Ftst=1` as the key to bypassing the lock. Unlike the mode keys, writes to the `Ftst` (Force Test) key succeeded even when the system was in "System Mode" (mode 3). Timed observation revealed the unlock pattern:
 
 - Write `Ftst=1` (returns success)
 - Monitor `F0Md` value (initially reads `3`)
@@ -109,19 +118,19 @@ Experimental testing confirmed `Ftst=1` writes succeeded unconditionally, even i
 - Retry `F0Md=1` write (typically succeeds within 4-6 seconds)
 - Manual control enabled
 
-The mechanism is timing-based. `thermalmonitord` monitors `Ftst` state and temporarily yields control. The unlock is implemented in `smc_unlock_fan_control()` with 100ms retry intervals and a 10 second timeout. SIP remains enabled.
+The mechanism is timing-based. `thermalmonitord` monitors the `Ftst` state and temporarily yields control of the fan modes. See [Implementation](#implementation) for details on the retry logic.
 
 ### Privilege Requirements
 
-Direct SMC writes from userspace consistently failed with `kIOReturnNotPrivileged`. Testing determined the required privilege level:
+Direct SMC writes from userspace consistently failed with `kIOReturnNotPrivileged`. Testing determined that while standard code signing is required for `SMJobBless`, the primary requirement for writing restricted SMC keys is that the process must run as a **privileged helper daemon** (root).
 
 **Testing approach:**
 
 1. Attempted SMC writes from unsigned helper → Failed (code signing required for `SMJobBless`)
-2. Attempted SMC writes from signed helper → SMC reads succeeded, mode writes failed with `0x82`
+2. Attempted SMC writes from signed helper (running as root) → SMC reads succeeded, mode writes failed with `0x82`
 3. Applied unlock sequence (`Ftst=1` → retry `F0Md=1`) → **Mode writes succeeded**
 
-The unlock mechanism worked from any properly signed process running as a privileged helper daemon. Analysis of system binaries confirmed that `thermalmonitord` communicates via `AppleSMCSensorDispatcher`, but the `Ftst` unlock bypasses this path entirely using standard `IOKit` calls to `AppleSMC`.
+The unlock mechanism worked once the process was running as a privileged helper daemon. Analysis of system binaries confirmed that while `thermalmonitord` communicates via `AppleSMCSensorDispatcher`, the `Ftst` unlock bypasses this path using standard `IOKit` calls to `AppleSMC`.
 
 However, `thermalmonitord` reclaimed control within seconds of the controlling process exiting. Monitoring `F0Md` after process termination showed mode reverting from 1 → 3.
 
@@ -131,13 +140,15 @@ This behavior indicated the requirement for a **persistent helper daemon**. The 
 - Keep `Ftst=1` state active
 - Respond to fan control requests via IPC
 
-The architecture follows Apple's [SMJobBless](https://developer.apple.com/documentation/servicemanagement/smjobbless(_:_:_:_:)) pattern: a privileged helper installed to `/Library/PrivilegedHelperTools/` communicates with the CLI via XPC. Standard Developer ID code signing is sufficient.
+The architecture follows Apple's `SMJobBless` pattern [^4]: a privileged helper installed to `/Library/PrivilegedHelperTools/` communicates with the CLI via XPC.
 
 ### Implementation
 
-The project is implemented in **Swift** with a C library for low-level SMC operations.
-The Swift code handles `XPC` communication and privileged helper installation, while the
-C layer directly interfaces with `IOKit` for hardware access.
+The project is implemented in **Swift** with a C library for low-level SMC operations. The Swift code handles `XPC` communication and privileged helper installation, while the C layer directly interfaces with `IOKit` for hardware access.
+
+#### Fan Control Unlock Logic
+
+The unlock sequence is implemented in `smcUnlockFanControl()` (see `Sources/smcfanhelper/SMCConnection.swift`). It uses a 100ms retry interval and a 10 second timeout to wait for `thermalmonitord` to yield control after the `Ftst=1` toggle.
 
 ### Key Findings
 
@@ -146,13 +157,11 @@ C layer directly interfaces with `IOKit` for hardware access.
 - Setting `Ftst=0` returns control to `thermalmonitord`
 - Auto mode sets target to minimum RPM while keeping manual control active
 - Fan speeds are clamped to SMC-reported min/max values (typical M4 Max: ~2300-7800 RPM)
-- IOKit connection types (0-4) behave identically for SMC access
-- `thermalmonitord` communicates via `AppleSMCSensorDispatcher`, but the `Ftst` unlock mechanism bypasses this path entirely
 
 **Modern Hardware Constraints (M3/M4):**
 
-- Fans cannot be controlled independently—both fans synchronize to similar speeds despite separate `F0Tg`/`F1Tg` keys
-- Firmware enforces coupled fan behavior
+- Based on experimental testing, fans on these models appear to be coupled—both fans synchronize to similar speeds even when separate `F0Tg`/`F1Tg` target keys are used.
+- The firmware appears to enforce synchronized fan behavior.
 
 ## Technical Details
 
@@ -175,13 +184,13 @@ Commands:
 
 - Monitors CPU, GPU, battery, and sensor temperatures
 - Adjusts fan speeds and performance based on thermal policy
-- Keeps fans in system mode (`F%dMd=3`), blocking direct mode writes
-- Communicates with SMC internals
-- Publishes thermal state to apps via `NSProcessInfo.thermalState`
+- Keeps hardware controllers (like `AppleCLPC`) in an active mitigation state, which enforces "System Mode" (`F%dMd=3`) and blocks direct SMC writes
+- Communicates with SMC and Power Management internals
+- Publishes thermal state to apps via `NSProcessInfo.thermalState` [^1] [^2]
 
 **Firmware Fallback:** If `thermalmonitord` is killed or unresponsive, hardware-level thermal protection remains active. The kernel and SMC firmware independently enforce temperature limits, throttle performance, run fans at maximum, and trigger emergency shutdown if thresholds are exceeded. Killing the daemon removes graceful thermal management but does not disable hardware protection.
 
-The daemon runs continuously and reclaims control when the unlock mechanism is released. A helper process must maintain an active connection to preserve manual control.
+The daemon runs continuously and reclaims control when the unlock mechanism is released. A helper process must maintain an active connection to preserve manual control. See Apple's documentation on thermal state notifications [^1] and IOKit thermal warnings [^2] for related APIs.
 
 ### Error Codes
 
@@ -189,7 +198,7 @@ The daemon runs continuously and reclaims control when the unlock mechanism is r
 
 | Code | Name | Description |
 | --- | --- | --- |
-| `0xe00002c2` | `kIOReturnNotPrivileged` | Insufficient permissions (check code signing) |
+| `0xe00002c2` | `kIOReturnNotPrivileged` | Operation requires root privileges (use privileged helper daemon) |
 
 **SMC Errors (returned in `result` field):**
 
@@ -234,16 +243,14 @@ The methodologies used here could reveal other SMC-controllable parameters:
 - **Battery Management** - Charge limits, health parameters
 - **System Telemetry** - Undocumented sensor data
 
-The SMC contains hundreds of keys. This research provides the framework to explore them.
-
 ## Quick Start
 
 ### Prerequisites
 
 - Xcode Command Line Tools: `xcode-select --install`
-- **Paid Apple Developer account** - Required for Developer ID certificate
-- Valid Apple Developer ID certificate for code signing
-- Your Apple Team ID (find at <https://developer.apple.com/account>)
+- **Paid Apple Developer account** — **REQUIRED**. A paid account is necessary to obtain a Developer ID certificate for code signing the privileged helper daemon.
+- Valid Apple Developer ID certificate for code signing.
+- Your Apple Team ID (find at <https://developer.apple.com/account>).
 
 ### Configuration
 
@@ -257,6 +264,8 @@ cp config.mk.example config.mk
 #   BUNDLE_ID_PREFIX - Your bundle identifier prefix (e.g., com.yourname)
 ```
 
+**Note:** You MUST use your own unique bundle identifier prefix. The helper daemon is installed system-wide and will conflict if multiple users use the same ID.
+
 ### Build
 
 Production build (with code signing):
@@ -268,7 +277,8 @@ make all
 Development build (IDE/testing):
 
 ```bash
-HELPER_BUNDLE_ID=io.goodkind.smcfanhelper swift build
+# Replace 'your.identifier' with your actual bundle ID prefix
+HELPER_BUNDLE_ID=your.identifier.smcfanhelper swift build
 ```
 
 ### Install
@@ -278,7 +288,7 @@ HELPER_BUNDLE_ID=io.goodkind.smcfanhelper swift build
 # Enter password when prompted
 ```
 
-The installer uses `SMJobBless` to install a privileged helper daemon.
+The installer uses `SMJobBless` [^4] to install a privileged helper daemon.
 
 ### Usage
 
@@ -362,19 +372,16 @@ smc-fan/
 
 ## References
 
-### Apple Documentation
-
-- [Respond to Thermal State Changes](https://developer.apple.com/library/archive/documentation/Performance/Conceptual/power_efficiency_guidelines_osx/RespondToThermalStateChanges.html) - `NSProcessInfo.thermalState` API
-- [kIOPMThermalWarningNotificationKey](https://developer.apple.com/documentation/iokit/kiopmthermalwarningnotificationkey) - IOKit thermal notifications
-- [Apple Platform Security - Boot Modes](https://support.apple.com/guide/security/sec10869885b) - Firmware security architecture
-- [SMJobBless](https://developer.apple.com/documentation/servicemanagement/smjobbless(_:_:_:_:)) - Privileged helper installation
-
-### Community Research
-
-- [Apple SMC Data Types](https://cbosoft.github.io/blog/2020/07/17/apple-smc/) - `fpe2` format encoding
-- [Asahi Linux SMC Documentation](https://asahilinux.org/docs/hw/soc/smc/) - Apple Silicon SMC key formats
-- [SMC Sensor Keys Reference](https://www.marukka.ch/mac/mac-smc-sensor-keys) - Intel Mac SMC key catalog
+[^1]: [Respond to Thermal State Changes](https://developer.apple.com/library/archive/documentation/Performance/Conceptual/power_efficiency_guidelines_osx/RespondToThermalStateChanges.html) - `NSProcessInfo.thermalState` API
+[^2]: [kIOPMThermalWarningNotificationKey](https://developer.apple.com/documentation/iokit/kiopmthermalwarningnotificationkey) - IOKit thermal notifications
+[^3]: [Apple Platform Security - Boot Modes](https://support.apple.com/guide/security/sec10869885b) - Firmware security architecture
+[^4]: [SMJobBless](https://developer.apple.com/documentation/servicemanagement/smjobbless(_:_:_:_:)) - Privileged helper installation
+[^5]: [Apple SMC Data Types](https://cbosoft.github.io/blog/2020/07/17/apple-smc/) - `fpe2` format encoding
+[^6]: [Asahi Linux SMC Documentation](https://asahilinux.org/docs/hw/soc/smc/) - Apple Silicon SMC key formats
+[^7]: [SMC Sensor Keys Reference](https://www.marukka.ch/mac/mac-smc-sensor-keys) - Comprehensive SMC key catalog
+[^8]: [smcFanControl Repository](https://github.com/hholtmann/smcFanControl) - Open-source fan control tool
+[^9]: [Linux Kernel applesmc Driver](https://github.com/torvalds/linux/blob/master/drivers/hwmon/applesmc.c) - Authoritative source for SMC key schema and protocol.
 
 ## License
 
-Educational and research use only. See warning above.
+Educational and research use only. See [warning](#️-warning) above.
