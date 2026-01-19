@@ -1,0 +1,20 @@
+# Configuration file for SMC Fan Control
+# Copy this to config.mk and customize with your own values
+
+# Your Apple Developer ID certificate identity
+# Find it with: security find-identity -v -p codesigning
+CERT_ID = YOUR_CERT_ID_HERE
+
+# Your Team ID (from Apple Developer account)
+# Find it at: https://developer.apple.com/account
+TEAM_ID = YOUR_TEAM_ID_HERE
+
+# Bundle identifier prefix (reverse domain notation)
+# Example: com.example, org.yourname, etc.
+BUNDLE_ID_PREFIX = io.example
+
+# Helper identifier (will be: BUNDLE_ID_PREFIX.smcfanhelper)
+HELPER_ID = $(BUNDLE_ID_PREFIX).smcfanhelper
+
+# Installer identifier (will be: BUNDLE_ID_PREFIX.smcfaninstaller)
+INSTALLER_ID = $(BUNDLE_ID_PREFIX).smcfaninstaller

@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>@@HELPER_ID@@</string>
+    <key>MachServices</key>
+    <dict>
+        <key>@@HELPER_ID@@</key>
+        <true/>
+    </dict>
+    <key>Program</key>
+    <string>/Library/PrivilegedHelperTools/@@HELPER_ID@@</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Library/PrivilegedHelperTools/@@HELPER_ID@@</string>
+    </array>
+</dict>
+</plist>
