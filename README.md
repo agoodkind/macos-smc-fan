@@ -62,8 +62,7 @@ The research combined multiple approaches to understand Apple Silicon's fan cont
 
 **Binary Analysis:**
 
-- Used IDA Pro to examine macOS system components (`thermalmonitord`, `AppleSMC` kernel extension)
-- Discovered SMC keys are often XOR-encoded in binaries (decoded at runtime for anti-tampering)
+- Used IDA Pro to examine system binaries including `thermalmonitord` daemon and `AppleSMC` kernel extension
 - Identified the `Ftst` (Force Test) flag as a critical unlock mechanism
 - Found retry patterns in SMC write operations
 
@@ -108,11 +107,6 @@ The unlock mechanism is implemented in `smc_unlock_fan_control()`:
 - Fans cannot be controlled independently - both fans tend to synchronize to similar speeds despite having separate `F0Tg`/`F1Tg` keys
 - Firmware appears to enforce coupled fan behavior
 
-**Security Requirements:**
-
-- **No SIP disable required** - Works with System Integrity Protection enabled
-- Only requires `com.apple.security.cs.disable-library-validation` entitlement
-- Standard code signing with Developer ID certificate
 
 ## Technical Details
 
