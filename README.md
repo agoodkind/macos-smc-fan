@@ -59,6 +59,38 @@ Untested
 
 ## Research Findings
 
+### SMC Keys
+
+| Key | Type | Description |
+| --- | --- | --- |
+| `FNum` | `uint8` | Number of fans |
+| `F%dAc` | `float` | Actual RPM (read-only) |
+| `F%dTg` | `float` | Target RPM |
+| `F%dMn` | `float` | Minimum RPM |
+| `F%dMx` | `float` | Maximum RPM |
+| `F%dMd` | `uint8` | Mode (0=auto, 1=manual, 3=system) |
+| `Ftst` | `uint8` | Force/test flag |
+
+**Data Formats:**
+
+- **Intel Macs**: 2-byte `fpe2` fixed-point (14.2 format, big-endian). The top 14 bits are integer, bottom 2 bits are fractional (divide raw value by 4).
+- **Apple Silicon**: 4-byte IEEE 754 float (little-endian)
+
+Cross-platform code must detect and handle both formats. See [Apple SMC](https://cbosoft.github.io/blog/2020/07/17/apple-smc/) and [Asahi Linux SMC Documentation](https://asahilinux.org/docs/hw/soc/smc/) for format details.
+
+### Fan Modes
+
+The `F%dMd` key controls fan behavior:
+
+| Mode | Name | Description |
+| --- | --- | --- |
+| `0` | Auto | System manages fans, target defaults to minimum RPM |
+| `1` | Manual | User controls target RPM via `F%dTg` |
+| `2` | ? | Unknown (possibly Intel-era legacy) |
+| `3` | System | `thermalmonitord` has exclusive control, firmware rejects `F0Md` writes |
+
+Mode 3 is the default on Apple Silicon when the system is managing thermals. The unlock sequence transitions the system from mode 3 → 0, then allows setting mode 1.
+
 ### Discovery Process
 
 Prior work on Intel-based Macs established the basic SMC key schema: `F0Md` for fan mode, `F0Tg` for target RPM, and `Ftst` for force/test state. These keys were accessible via standard `IOKit` calls on Intel hardware but failed on Apple Silicon.
@@ -124,25 +156,6 @@ C layer directly interfaces with `IOKit` for hardware access.
 
 ## Technical Details
 
-### SMC Keys
-
-| Key | Type | Description |
-| --- | --- | --- |
-| `FNum` | `uint8` | Number of fans |
-| `F%dAc` | `float` | Actual RPM (read-only) |
-| `F%dTg` | `float` | Target RPM |
-| `F%dMn` | `float` | Minimum RPM |
-| `F%dMx` | `float` | Maximum RPM |
-| `F%dMd` | `uint8` | Mode (0=auto, 1=manual, 3=system) |
-| `Ftst` | `uint8` | Force/test flag |
-
-**Data Formats:**
-
-- **Intel Macs**: 2-byte `fpe2` fixed-point (14.2 format, big-endian). The top 14 bits are integer, bottom 2 bits are fractional (divide raw value by 4).
-- **Apple Silicon**: 4-byte IEEE 754 float (little-endian)
-
-Cross-platform code must detect and handle both formats. See [Apple SMC](https://cbosoft.github.io/blog/2020/07/17/apple-smc/) and [Asahi Linux SMC Documentation](https://asahilinux.org/docs/hw/soc/smc/) for format details.
-
 ### IOKit Communication
 
 - Service: `AppleSMC`
@@ -155,19 +168,6 @@ Commands:
 - `9` - Read key info
 - `5` - Read value
 - `6` - Write value
-
-### Fan Modes
-
-The `F%dMd` key controls fan behavior:
-
-| Mode | Name | Description |
-| --- | --- | --- |
-| `0` | Auto | System manages fans, target defaults to minimum RPM |
-| `1` | Manual | User controls target RPM via `F%dTg` |
-| `2` | ? | Unknown (possibly Intel-era legacy) |
-| `3` | System | `thermalmonitord` has exclusive control, firmware rejects `F0Md` writes |
-
-Mode 3 is the default on Apple Silicon when the system is managing thermals. The unlock sequence transitions the system from mode 3 → 0, then allows setting mode 1.
 
 ### thermalmonitord (Apple Silicon)
 
