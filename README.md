@@ -69,9 +69,9 @@ Experimental testing confirmed `Ftst=1` writes succeeded unconditionally, even i
 
 The mechanism is timing-based. `thermalmonitord` monitors `Ftst` state and temporarily yields control. The unlock is implemented in `smc_unlock_fan_control()` with 100ms retry intervals and a 10 second timeout. SIP remains enabled.
 
-### Privilege Escalation Discovery
+### Privilege Requirements
 
-Early testing revealed that direct SMC writes from userspace sometimes failed with `kIOReturnNotPrivileged`. The question was: what privilege level is actually required?
+Direct SMC writes from userspace consistently failed with `kIOReturnNotPrivileged`. Testing determined the required privilege level:
 
 **Testing approach:**
 
@@ -79,7 +79,7 @@ Early testing revealed that direct SMC writes from userspace sometimes failed wi
 2. Attempted SMC writes from signed helper → SMC reads succeeded, mode writes failed with `0x82`
 3. Applied unlock sequence (`Ftst=1` → retry `F0Md=1`) → **Mode writes succeeded**
 
-The unlock mechanism worked from any properly signed process. Analysis of system binaries confirmed that `thermalmonitord` communicates via `AppleSMCSensorDispatcher`, but the `Ftst` unlock bypasses this path entirely using standard `IOKit` calls to `AppleSMC`.
+The unlock mechanism worked from any properly signed process running as a privileged helper daemon. Analysis of system binaries confirmed that `thermalmonitord` communicates via `AppleSMCSensorDispatcher`, but the `Ftst` unlock bypasses this path entirely using standard `IOKit` calls to `AppleSMC`.
 
 However, `thermalmonitord` reclaimed control within seconds of the controlling process exiting. Monitoring `F0Md` after process termination showed mode reverting from 1 → 3.
 
