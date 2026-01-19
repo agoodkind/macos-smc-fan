@@ -1,23 +1,20 @@
-# Build artifacts
-build/
-tmp/
-*.o
-*.app
-*.dmg
+# Build artifacts  
+build/          # Intermediate files
+Products/       # Final binaries
+generated/      # Generated config
 
 # Generated files (created from templates at build time)
 generated/
+research/
 
 # Local configuration (contains personal Developer ID and Bundle IDs)
 config.mk
 
-# Research files (decompiled binaries, tests, etc)
-# This folder is not to be distributed
-research/
+# Xcode
+xcuserdata/
+.swiftpm/
 
-# IDE files
-smc-fan.gpr
-smc-fan.rep
-smc-fan.lock
-smc-fan.lock~
-.DS_Store
+# Swift Package Manager
+.build/
+.swiftpm/
+Package.resolved
