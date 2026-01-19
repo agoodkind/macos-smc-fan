@@ -6,7 +6,7 @@
 #include <stdbool.h>
 
 // SMC IOKit constants
-// Selector 2 is used for SMC writes (per existing commercial tools)
+// Selector 2 is used for SMC operations
 #define KERNEL_INDEX_SMC 2
 #define SMC_CMD_READ_BYTES 5
 #define SMC_CMD_WRITE_BYTES 6

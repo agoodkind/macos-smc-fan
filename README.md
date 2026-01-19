@@ -2,7 +2,7 @@
 
 ## Motivation
 
-Prior to this research, **no public documentation existed** for controlling fan speeds on modern Apple Silicon Macs (M1-M4). While tools like existing commercial tools worked, the underlying mechanism—particularly how to bypass macOS's thermal management system (`thermalmonitord`)—remained undocumented.
+Prior to this research, **no public documentation existed** for controlling fan speeds on modern Apple Silicon Macs (M1-M4). While commercial tools existed, the underlying mechanism—particularly how to bypass macOS's thermal management system (`thermalmonitord`)—remained undocumented.
 
 This project documents the **reverse engineering process**, the discovered **unlock mechanism**, and provides a working implementation. The research reveals how `thermalmonitord` enforces "protected mode" and the specific SMC key sequence required to regain manual control.
 
@@ -49,13 +49,13 @@ Untested
 
 ### The Discovery
 
-Through reverse engineering of `existing commercial tools` using IDA Pro, this research uncovered the specific unlock sequence:
+Analysis of existing fan control implementations revealed the specific unlock sequence:
 
 1. Write `Ftst=1` (Force Test flag)
 2. Retry `F0Md=1` (Fan Mode) until `thermalmonitord` releases control
 3. The system transitions from mode 3 (protected) to mode 1 (manual)
 
-This mechanism was **obfuscated in existing commercial tools** (XOR-encrypted SMC keys, runtime decryption) and previously undocumented publicly.
+Commercial implementations often use XOR encoding for SMC keys (decoded at runtime), a common pattern in compiled binaries.
 
 ### Implementation
 
@@ -137,6 +137,7 @@ typedef struct {
 ## Future Research Directions
 
 The methodologies used here could reveal other SMC-controllable parameters:
+
 - **Power Management** - CPU/GPU power limits, TDP controls
 - **Thermal Sensors** - Access to temperature sensors beyond standard APIs
 - **Performance States** - Direct control over P-states, frequency scaling
