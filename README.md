@@ -21,7 +21,7 @@ Beyond fan control, this work demonstrates **SMC research methodologies** that c
 
 ## Background
 
-### Evolution of Mac Fan Control
+### Evolution of macOS SMC-based Fan Control
 
 The transition from Intel to Apple Silicon moved fan management from a discrete chip to a component integrated directly into the SoC. System management logic shifted from the H8/SMC controller to the Always-On (AOP) subsystem.
 
