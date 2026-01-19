@@ -3,6 +3,18 @@ import Foundation
 import SMCCommon  // SPM build
 #endif
 
+actor ExitCode {
+    private var value: Int32 = 0
+    
+    func set(_ newValue: Int32) {
+        value = newValue
+    }
+    
+    func get() -> Int32 {
+        value
+    }
+}
+
 func printUsage(_ programName: String) {
     print("Usage: \(programName) <command> [args...]")
     print("\nCommands:")
@@ -15,7 +27,7 @@ func printUsage(_ programName: String) {
 
 @main
 struct SMCFan {
-    static func main() {
+    static func main() async {
         let args = CommandLine.arguments
         
         guard args.count >= 2 else {
@@ -44,79 +56,79 @@ struct SMCFan {
             exit(1)
         }
         
-        let semaphore = DispatchSemaphore(value: 0)
-        var exitCode: Int32 = 0
+        let exitCode = ExitCode()
         
-        proxy.smcOpen { success, error in
+        await withCheckedContinuation { continuation in
+            proxy.smcOpen { success, error in
             guard success else {
                 if let error = error {
                     print("Failed to open SMC: \(error)")
                 }
-                exitCode = 1
-                semaphore.signal()
+                Task { await exitCode.set(1) }
+                continuation.resume()
                 return
             }
             
             switch command {
             case "list":
-                proxy.smcGetFanCount { success, count, error in
-                    guard success else {
-                        if let error = error {
-                            print("Failed to get fan count: \(error)")
-                        }
-                        exitCode = 1
-                        semaphore.signal()
-                        return
-                    }
-                    
-                    print("Fans: \(count)")
-                    
-                    let group = DispatchGroup()
-                    
-                    for i in 0..<count {
-                        group.enter()
-                        proxy.smcGetFanInfo(i) {
-                            success, actualRPM, targetRPM, minRPM, maxRPM, manualMode, error in
-                            if success {
-                                let info = FanInfo(
-                                    actualRPM: actualRPM,
-                                    targetRPM: targetRPM,
-                                    minRPM: minRPM,
-                                    maxRPM: maxRPM,
-                                    manualMode: manualMode
-                                )
-                                print(
-                                    "Fan \(i): \(Int(info.actualRPM)) RPM " +
-                                    "(Target: \(Int(info.targetRPM)), " +
-                                    "Min: \(Int(info.minRPM)), " +
-                                    "Max: \(Int(info.maxRPM)), " +
-                                    "Mode: \(info.manualMode ? "Manual" : "Auto"))"
-                                )
-                            } else {
-                                print("Fan \(i): Error reading info")
+                    proxy.smcGetFanCount { success, count, error in
+                        guard success else {
+                            if let error = error {
+                                print("Failed to get fan count: \(error)")
                             }
-                            group.leave()
+                            Task { await exitCode.set(1) }
+                            continuation.resume()
+                            return
+                        }
+                        
+                        print("Fans: \(count)")
+                        
+                        let group = DispatchGroup()
+                        
+                        for i in 0..<count {
+                            group.enter()
+                            proxy.smcGetFanInfo(i) {
+                                success, actualRPM, targetRPM, minRPM, maxRPM, manualMode, error in
+                                if success {
+                                    let info = FanInfo(
+                                        actualRPM: actualRPM,
+                                        targetRPM: targetRPM,
+                                        minRPM: minRPM,
+                                        maxRPM: maxRPM,
+                                        manualMode: manualMode
+                                    )
+                                    print(
+                                        "Fan \(i): \(Int(info.actualRPM)) RPM " +
+                                        "(Target: \(Int(info.targetRPM)), " +
+                                        "Min: \(Int(info.minRPM)), " +
+                                        "Max: \(Int(info.maxRPM)), " +
+                                        "Mode: \(info.manualMode ? "Manual" : "Auto"))"
+                                    )
+                                } else {
+                                    print("Fan \(i): Error reading info")
+                                }
+                                group.leave()
+                            }
+                        }
+                        
+                        group.notify(queue: .global()) {
+                            continuation.resume()
                         }
                     }
-                    
-                    group.notify(queue: .global()) {
-                        semaphore.signal()
-                    }
-                }
                 
             case "set":
                 guard args.count >= 4 else {
                     print("Usage: smcfan set <fan> <rpm>")
-                    exitCode = 1
-                    semaphore.signal()
+                    Task { await exitCode.set(1) }
+                    continuation.resume()
                     return
                 }
                 
                 guard let fan = Int(args[2]),
                       let rpm = Float(args[3]) else {
                     print("Invalid fan or RPM value")
-                    exitCode = 1
-                    semaphore.signal()
+                    Task { await exitCode.set(1) }
+                    continuation.resume()
                     return
                 }
                 
@@ -127,23 +139,23 @@ struct SMCFan {
                         if let error = error {
                             print("Failed to set speed: \(error)")
                         }
-                        exitCode = 1
+                        Task { await exitCode.set(1) }
                     }
-                    semaphore.signal()
+                    continuation.resume()
                 }
                 
             case "auto":
                 guard args.count >= 3 else {
                     print("Usage: smcfan auto <fan>")
-                    exitCode = 1
-                    semaphore.signal()
+                    Task { await exitCode.set(1) }
+                    continuation.resume()
                     return
                 }
                 
                 guard let fan = Int(args[2]) else {
                     print("Invalid fan value")
-                    exitCode = 1
-                    semaphore.signal()
+                    Task { await exitCode.set(1) }
+                    continuation.resume()
                     return
                 }
                 
@@ -154,16 +166,16 @@ struct SMCFan {
                         if let error = error {
                             print("Failed to set auto mode: \(error)")
                         }
-                        exitCode = 1
+                        Task { await exitCode.set(1) }
                     }
-                    semaphore.signal()
+                    continuation.resume()
                 }
                 
             case "read":
                 guard args.count >= 3 else {
                     print("Usage: smcfan read <key>")
-                    exitCode = 1
-                    semaphore.signal()
+                    Task { await exitCode.set(1) }
+                    continuation.resume()
                     return
                 }
                 
@@ -175,20 +187,20 @@ struct SMCFan {
                         if let error = error {
                             print("Failed to read key: \(error)")
                         }
-                        exitCode = 1
+                        Task { await exitCode.set(1) }
                     }
-                    semaphore.signal()
+                    continuation.resume()
                 }
                 
             default:
                 printUsage(args[0])
-                exitCode = 1
-                semaphore.signal()
+                Task { await exitCode.set(1) }
+                continuation.resume()
+            }
             }
         }
         
-        semaphore.wait()
         connection.invalidate()
-        exit(exitCode)
+        exit(await exitCode.get())
     }
 }
