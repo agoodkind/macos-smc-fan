@@ -48,6 +48,13 @@ let package = Package(
             dependencies: ["SMCCommon"],
             path: "Sources/installer"
         ),
+        
+        // Tests
+        .testTarget(
+            name: "SMCFanTests",
+            dependencies: [],
+            path: "Tests/SMCFanTests"
+        ),
     ],
     cLanguageStandard: .c11
 )
