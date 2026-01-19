@@ -1,10 +1,9 @@
-#include "smcfan_common.h"
+#include "smc.h"
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
 #include <unistd.h>
 #include <time.h>
-#import <Foundation/Foundation.h>
 
 kern_return_t smc_open(io_connect_t *conn) {
     mach_port_t masterPort;
@@ -21,12 +20,10 @@ kern_return_t smc_open(io_connect_t *conn) {
     kern_return_t r = IOServiceOpen(device, mach_task_self(), 0, conn);
     
     if (r != kIOReturnSuccess) {
-        NSLog(@"smc_open: IOServiceOpen failed: 0x%x (euid=%d)", r, geteuid());
+        fprintf(stderr, "smc_open: IOServiceOpen failed: 0x%x (euid=%d)\n", r, geteuid());
         if (r == kIOReturnNotPrivileged) {
-             NSLog(@"Error kIOReturnNotPrivileged: Code signing issue or kernel restriction.");
+             fprintf(stderr, "Error kIOReturnNotPrivileged: Code signing issue or kernel restriction.\n");
         }
-    } else {
-        NSLog(@"smc_open: IOServiceOpen success (conn=%d)", *conn);
     }
     
     IOObjectRelease(device);
@@ -36,11 +33,6 @@ kern_return_t smc_open(io_connect_t *conn) {
 kern_return_t smc_call(io_connect_t conn, SMCKeyData_t *in, SMCKeyData_t *out) {
     size_t sz = sizeof(SMCKeyData_t);
     kern_return_t r = IOConnectCallStructMethod(conn, KERNEL_INDEX_SMC, in, sz, out, &sz);
-    if (r != kIOReturnSuccess) {
-        NSLog(@"smc_call: IOConnectCallStructMethod failed: 0x%x (cmd=%d, key=%c%c%c%c)", 
-              r, in->data8, 
-              (in->key >> 24) & 0xFF, (in->key >> 16) & 0xFF, (in->key >> 8) & 0xFF, in->key & 0xFF);
-    }
     return r;
 }
 
@@ -48,12 +40,9 @@ kern_return_t smc_read_key(io_connect_t conn, const char *key, SMCBytes_t val, u
     SMCKeyData_t in = {0}, out = {0};
     in.key = (key[0]<<24)|(key[1]<<16)|(key[2]<<8)|key[3];
     in.data8 = SMC_CMD_READ_KEYINFO;
-
-    NSLog(@"smc_read_key: key=%s", key);
     
     kern_return_t r = smc_call(conn, &in, &out);
     if (r != kIOReturnSuccess) {
-        NSLog(@"smc_read_key: keyinfo call failed: 0x%x (key=%s)", r, key);
         return r;
     }
 
@@ -66,14 +55,11 @@ kern_return_t smc_read_key(io_connect_t conn, const char *key, SMCBytes_t val, u
     if (r == kIOReturnSuccess) {
         memcpy(val, out.bytes, dataSize);
         *size = dataSize;
-        NSLog(@"smc_read_key: success (key=%s)", key);
-    } else {
-        NSLog(@"smc_read_key: read bytes call failed: 0x%x (key=%s)", r, key);
     }
     return r;
 }
 
-kern_return_t smc_write_key(io_connect_t conn, const char *key, SMCBytes_t val, uint32_t size) {
+kern_return_t smc_write_key(io_connect_t conn, const char *key, const SMCBytes_t val, uint32_t size) {
     SMCKeyData_t in = {0}, out = {0};
     in.key = (key[0]<<24)|(key[1]<<16)|(key[2]<<8)|key[3];
     in.data8 = SMC_CMD_READ_KEYINFO;
@@ -95,11 +81,9 @@ kern_return_t smc_unlock_fan_control(io_connect_t conn, int max_retries, double 
     uint32_t size;
     
     // Step 1: Write Ftst=1 to trigger unlock
-    NSLog(@"smc_unlock_fan_control: Writing Ftst=1 to trigger unlock");
     val[0] = 1;
     kern_return_t r = smc_write_key(conn, SMC_KEY_FAN_TEST, val, 1);
     if (r != kIOReturnSuccess) {
-        NSLog(@"smc_unlock_fan_control: Failed to write Ftst=1: 0x%x", r);
         return r;
     }
     
@@ -108,18 +92,10 @@ kern_return_t smc_unlock_fan_control(io_connect_t conn, int max_retries, double 
     snprintf(mode_key, sizeof(mode_key), SMC_KEY_FAN_MODE, 0);
     r = smc_read_key(conn, mode_key, val, &size);
     if (r != kIOReturnSuccess) {
-        NSLog(@"smc_unlock_fan_control: Failed to read F0Md: 0x%x", r);
         return r;
     }
     
-    uint8_t initial_mode = val[0];
-    NSLog(@"smc_unlock_fan_control: Initial F0Md=%d (0=auto, 1=forced, 3=thermalmonitord)", 
-          initial_mode);
-    
     // Step 3: Retry loop for F0Md=1 write
-    NSLog(@"smc_unlock_fan_control: Retrying F0Md=1 write (max %d retries, %.1fs timeout)",
-          max_retries, timeout_seconds);
-    
     struct timespec start, now;
     clock_gettime(CLOCK_MONOTONIC, &start);
     
@@ -128,15 +104,6 @@ kern_return_t smc_unlock_fan_control(io_connect_t conn, int max_retries, double 
         r = smc_write_key(conn, mode_key, val, 1);
         
         if (r == kIOReturnSuccess) {
-            clock_gettime(CLOCK_MONOTONIC, &now);
-            double elapsed = (now.tv_sec - start.tv_sec) + 
-                           (now.tv_nsec - start.tv_nsec) / 1e9;
-            NSLog(@"smc_unlock_fan_control: F0Md=1 write succeeded after %.1fs (%d retries)",
-                  elapsed, retry + 1);
-            
-            // Verify mode changed
-            smc_read_key(conn, mode_key, val, &size);
-            NSLog(@"smc_unlock_fan_control: F0Md now = %d", val[0]);
             return kIOReturnSuccess;
         }
         
@@ -145,25 +112,16 @@ kern_return_t smc_unlock_fan_control(io_connect_t conn, int max_retries, double 
         double elapsed = (now.tv_sec - start.tv_sec) + 
                        (now.tv_nsec - start.tv_nsec) / 1e9;
         if (elapsed >= timeout_seconds) {
-            NSLog(@"smc_unlock_fan_control: Timeout after %.1fs", elapsed);
             return kIOReturnTimeout;
-        }
-        
-        // Log progress every 10 retries
-        if (retry % 10 == 0 && retry > 0) {
-            smc_read_key(conn, mode_key, val, &size);
-            NSLog(@"smc_unlock_fan_control: Retry %d: F0Md=%d, elapsed=%.1fs",
-                  retry, val[0], elapsed);
         }
         
         usleep(100000);  // 100ms between retries
     }
     
-    NSLog(@"smc_unlock_fan_control: Max retries exceeded");
     return kIOReturnTimeout;
 }
 
-float bytes_to_float(SMCBytes_t val, uint32_t size) {
+float bytes_to_float(const SMCBytes_t val, uint32_t size) {
     if (size == 4) {
         float f;
         memcpy(&f, val, 4);

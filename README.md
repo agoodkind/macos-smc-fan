@@ -100,6 +100,8 @@ Untested
 
 ## How It Works
 
+This project is implemented in **Swift** with a C library for low-level SMC operations. The Swift code handles XPC communication and privilege escalation, while the C layer directly interfaces with IOKit for hardware access.
+
 On Apple Silicon Macs, fan control requires working around macOS's thermal management system. The SMC (System Management Controller) accepts fan speed commands, but only when the system is not in "protected" mode.
 
 ### The Challenge
@@ -144,23 +146,30 @@ smcfan (CLI)
 
 ```text
 smc-fan/
-├── src/                    Source files
-│   ├── smcfan.m           CLI tool (XPC client)
-│   ├── smcfan_helper.m    Privileged helper daemon
-│   ├── smcfan_common.c/h  SMC library with unlock logic
-│   └── installer.m        SMJobBless installer
-├── templates/             Template files with placeholders
+├── Sources/               Source code
+│   ├── smcfan/           CLI tool
+│   │   └── main.swift
+│   ├── smcfanhelper/     XPC helper daemon
+│   │   └── main.swift
+│   ├── installer/        SMJobBless installer
+│   │   └── main.swift
+│   ├── common/           Shared Swift code
+│   │   └── SMCProtocol.swift
+│   └── libsmc/           Low-level C library
+│       ├── smc.c         SMC hardware interface
+│       └── smc.h
+├── Include/              Public headers
+│   └── SMCFan-Bridging-Header.h
+├── templates/            Template files
 │   ├── helper-info.plist.template
 │   ├── helper-launchd.plist.template
 │   └── smcfan_config.h.template
-├── generated/             Auto-generated (gitignored)
-│   ├── smcfan_config.h
-│   ├── helper-info.plist
-│   └── helper-launchd.plist
-├── build/                 Build artifacts (gitignored)
-├── config.mk.example      Template for your credentials
-├── config.mk              Your credentials (gitignored)
-└── Makefile
+├── generated/            Auto-generated (gitignored)
+├── build/                Build artifacts (gitignored)
+├── config.mk.example     Template for credentials
+├── config.mk             Your credentials (gitignored)
+├── entitlements.plist    Code signing entitlements
+└── Makefile              Build system
 ```
 
 ## Technical Details
