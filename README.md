@@ -50,29 +50,26 @@ Untested
 
 ### Discovery Process
 
-The research began with observing macOS system behavior and SMC interactions:
+The research combined multiple approaches to understand Apple Silicon's fan control mechanism:
 
-**Initial Observations:**
-- Direct writes to `F0Md` (Fan Mode) failed with error `0x82` (`kSMCBadCommand`)
-- Reading `F0Md` consistently returned `3` (system/protected mode)
-- `thermalmonitord` daemon was actively managing thermal state
-- Standard SMC key writes (`F0Tg` for target RPM) were rejected
+**System-Level Analysis:**
+- Monitored `IOKit` calls to `AppleSMC` service using dtrace and system tracing
+- Examined `thermalmonitord` behavior through console logs and process monitoring
+- Observed that `F0Md` writes failed with `0x82` (`kSMCBadCommand`) when in mode 3
+- Tested various SMC key combinations and timing patterns
 
-**Methodology:**
-- Monitored `IOKit` calls to the `AppleSMC` service using system tracing
-- Examined `thermalmonitord` behavior through system logs and dtrace
-- Experimented with various SMC key sequences and timing
-- Tested different write patterns to identify unlock conditions
+**Binary Analysis:**
+- Used IDA Pro to examine compiled binaries with fan control capabilities
+- Discovered SMC keys are often XOR-encoded in binaries (decoded at runtime for anti-tampering)
+- Identified the `Ftst` (Force Test) flag as a critical unlock mechanism
+- Found retry patterns in SMC write operations
 
-**Key Discovery:**
-Through systematic testing, the unlock sequence emerged:
-
-1. Write `Ftst=1` (Force Test flag) - always succeeds
-2. Retry `F0Md=1` writes with delays
-3. After ~3-6 seconds, `thermalmonitord` releases its lock
-4. `F0Md=1` succeeds, enabling manual control
-
-This pattern suggests `thermalmonitord` monitors `Ftst` state and temporarily yields control, creating a timing window for mode changes.
+**Experimental Testing:**
+Through systematic testing on M3 MacBook Pro hardware:
+- `Ftst=1` write always succeeds, even in mode 3
+- Subsequent `F0Md=1` retries eventually succeed after ~3-6 seconds
+- `thermalmonitord` temporarily yields when `Ftst` is active
+- Once unlocked, fan control remains available until `Ftst=0` or daemon restart
 
 ### Implementation
 
@@ -84,17 +81,15 @@ On Apple Silicon Macs, fan control requires working around macOS's thermal manag
 
 When macOS's `thermalmonitord` actively controls fans, it sets the fan mode to 3. In this state, direct writes to change the fan mode fail with SMC error `0x82` (`kSMCBadCommand`) - the SMC firmware itself rejects the command.
 
-### The Solution
+### Implementation Details
 
-The tool uses an unlock sequence with retry logic:
+The unlock mechanism is implemented in `smc_unlock_fan_control()`:
 
-1. Write `Ftst=1` to trigger unlock (always succeeds)
-2. Retry `F0Md=1` writes every 100ms
-3. After ~3-6 seconds, `thermalmonitord` releases control
-4. `F0Md=1` succeeds, fan control is enabled
-5. Write target RPM to `F0Tg`
-
-This is handled automatically by `smc_unlock_fan_control()` in the C library.
+1. Write `Ftst=1` to trigger unlock
+2. Enter retry loop (100ms intervals, 10 second timeout)
+3. Attempt `F0Md=1` write repeatedly
+4. On success, mode transitions from 3 → 1 (manual control enabled)
+5. Fan speed can now be set via `F0Tg` (target RPM)
 
 ### Key Findings
 
