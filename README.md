@@ -51,48 +51,27 @@ Untested
 
 ### Discovery Process
 
-The research combined multiple approaches to understand Apple Silicon's fan control mechanism:
+Prior work on Intel-based Macs established the basic SMC key schema: `F0Md` for fan mode, `F0Tg` for target RPM, and `Ftst` for force/test state. These keys were accessible via standard `IOKit` calls on Intel hardware but failed on Apple Silicon.
 
-**System-Level Analysis:**
+Initial attempts to write `F0Md` on M4 hardware returned `0xe00002c2` (`kIOReturnNotPrivileged`). Investigation focused on entitlements and code signing, testing various permission combinations. This proved to be a dead end: only `com.apple.security.cs.disable-library-validation` was needed.
 
-- Monitored `IOKit` calls to `AppleSMC` service using dtrace and system tracing
-- Examined `thermalmonitord` behavior through console logs and process monitoring
-- Observed that `F0Md` writes failed with `0x82` (`kSMCBadCommand`) when in mode 3
-- Tested various SMC key combinations and timing patterns
+System-level tracing using `dtrace` on `thermalmonitord` and `AppleSMC` kernel extension revealed the actual blocker. Reading `F0Md` returned `3` (system mode). Writes to change it failed with `0x82` (`kSMCBadCommand`), a firmware-level rejection. The `thermalmonitord` daemon enforced mode 3, preventing direct mode changes.
 
-**Binary Analysis:**
+Binary analysis with IDA Pro decompiled `thermalmonitord` and `AppleSMC`, producing tens of thousands of lines of pseudocode. LLMs were employed to analyze this output, searching for patterns in SMC write operations and cross-referencing `Ftst` flag usage. This automated analysis identified `Ftst` as a trigger for thermal management state changes.
 
-- Used IDA Pro to examine system binaries including `thermalmonitord` daemon and `AppleSMC` kernel extension
-- Identified the `Ftst` (Force Test) flag as a critical unlock mechanism
-- Found retry patterns in SMC write operations
+Experimental testing confirmed `Ftst=1` writes succeeded unconditionally, even in mode 3. Timed observation of mode state revealed the unlock pattern:
 
-**Experimental Testing:**
-Through systematic testing on M4 Max MacBook Pro hardware:
+- Write `Ftst=1` (returns success)
+- Monitor `F0Md` value (initially reads `3`)
+- After 4-6 seconds, `F0Md` transitions to `0`
+- Retry `F0Md=1` write (now succeeds)
+- Manual control enabled
 
-- `Ftst=1` write always succeeds, even in mode 3
-- Subsequent `F0Md=1` retries eventually succeed after ~3-6 seconds
-- `thermalmonitord` temporarily yields when `Ftst` is active
-- Once unlocked, fan control remains available until `Ftst=0` or daemon restart
+The mechanism is timing-based. `thermalmonitord` appears to monitor `Ftst` state and temporarily yields control. The unlock is implemented in `smc_unlock_fan_control()` with 100ms retry intervals and a 10 second timeout. SIP remains enabled.
 
 ### Implementation
 
 The project is implemented in **Swift** with a C library for low-level SMC operations. The Swift code handles `XPC` communication and privilege escalation, while the C layer directly interfaces with `IOKit` for hardware access.
-
-On Apple Silicon Macs, fan control requires working around macOS's thermal management system. The SMC (System Management Controller) accepts fan speed commands, but only when the system is not in "protected" mode.
-
-### The Challenge
-
-When macOS's `thermalmonitord` actively controls fans, it sets the fan mode to 3. In this state, direct writes to change the fan mode fail with SMC error `0x82` (`kSMCBadCommand`) - the SMC firmware itself rejects the command.
-
-### Implementation Details
-
-The unlock mechanism is implemented in `smc_unlock_fan_control()`:
-
-1. Write `Ftst=1` to trigger unlock
-2. Enter retry loop (100ms intervals, 10 second timeout)
-3. Attempt `F0Md=1` write repeatedly
-4. On success, mode transitions from 3 → 1 (manual control enabled)
-5. Fan speed can now be set via `F0Tg` (target RPM)
 
 ### Key Findings
 
@@ -106,7 +85,6 @@ The unlock mechanism is implemented in `smc_unlock_fan_control()`:
 
 - Fans cannot be controlled independently - both fans tend to synchronize to similar speeds despite having separate `F0Tg`/`F1Tg` keys
 - Firmware appears to enforce coupled fan behavior
-
 
 ## Technical Details
 
