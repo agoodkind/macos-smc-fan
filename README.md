@@ -102,7 +102,12 @@ The project is implemented in **Swift** with a C library for low-level SMC opera
 | `F%dMd` | uint8 | Mode (0=auto, 1=manual, 3=system) |
 | `Ftst` | uint8 | Force/test flag |
 
-Intel Macs used 2-byte `fpe2` fixed-point format (big-endian). Apple Silicon uses 4-byte IEEE 754 floats (little-endian). Cross-platform code must detect and handle both formats.
+**Data Formats:**
+
+- **Intel Macs**: 2-byte `fpe2` fixed-point (14.2 format, big-endian). The top 14 bits are integer, bottom 2 bits are fractional (divide raw value by 4).
+- **Apple Silicon**: 4-byte IEEE 754 float (little-endian)
+
+Cross-platform code must detect and handle both formats. See [Apple SMC](https://cbosoft.github.io/blog/2020/07/17/apple-smc/) and [Asahi Linux SMC Documentation](https://asahilinux.org/docs/hw/soc/smc/) for format details.
 
 ### IOKit Communication
 
@@ -116,6 +121,38 @@ Commands:
 - `9` - Read key info
 - `5` - Read value
 - `6` - Write value
+
+### Fan Modes
+
+The `F%dMd` key controls fan behavior:
+
+| Mode | Name | Description |
+| --- | --- | --- |
+| `0` | Auto | System manages fans, target defaults to minimum RPM |
+| `1` | Manual | User controls target RPM via `F%dTg` |
+| `3` | System | `thermalmonitord` has exclusive control, firmware rejects `F0Md` writes |
+
+Mode 3 is the default on Apple Silicon when the system is managing thermals. The unlock sequence transitions the system from mode 3 → 0, then allows setting mode 1.
+
+### thermalmonitord
+
+`thermalmonitord` (macOS: `/usr/libexec/thermald`) is a userspace daemon responsible for thermal management across Apple platforms (macOS, iOS, iPadOS). It:
+
+- Monitors CPU, GPU, battery, and sensor temperatures
+- Adjusts fan speeds and performance based on thermal policy
+- Enforces mode 3 on Apple Silicon, blocking direct SMC writes to `F0Md`
+- Communicates with SMC via `AppleSMCSensorDispatcher` using private entitlements
+- Publishes thermal state to apps via `NSProcessInfo.thermalState`
+
+**Firmware Fallback:** If `thermalmonitord` is killed or unresponsive, hardware-level thermal protection remains active. The kernel and SMC firmware independently enforce temperature limits, throttle performance, run fans at maximum, and trigger emergency shutdown if thresholds are exceeded. Killing the daemon removes graceful thermal management but does not disable hardware protection—the system will panic or force shutdown if the watchdog timer expires (~180 seconds without check-in).
+
+The daemon runs continuously and reclaims control (reverts to mode 3) when `Ftst` is set back to `0`. The helper daemon must maintain an active connection to preserve manual control.
+
+**References:**
+
+- [Respond to Thermal State Changes](https://developer.apple.com/library/archive/documentation/Performance/Conceptual/power_efficiency_guidelines_osx/RespondToThermalStateChanges.html) (Apple Developer)
+- [kIOPMThermalWarningNotificationKey](https://developer.apple.com/documentation/iokit/kiopmthermalwarningnotificationkey) (IOKit Documentation)
+- [Apple Platform Security - Boot Modes](https://support.apple.com/guide/security/sec10869885b) (Apple Support)
 
 ### Error Codes
 
