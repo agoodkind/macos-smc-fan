@@ -1,6 +1,12 @@
-# SMC Fan Control for Apple Silicon
+# SMC Fan Control Research for Apple Silicon
 
-Control fan speeds on Apple Silicon Macs (M1/M2/M3/M4) via command line.
+## Motivation
+
+Prior to this research, **no public documentation existed** for controlling fan speeds on modern Apple Silicon Macs (M1-M4). While tools like existing commercial tools worked, the underlying mechanism—particularly how to bypass macOS's thermal management system (`thermalmonitord`)—remained undocumented.
+
+This project documents the **reverse engineering process**, the discovered **unlock mechanism**, and provides a working implementation. The research reveals how `thermalmonitord` enforces "protected mode" and the specific SMC key sequence required to regain manual control.
+
+Beyond fan control, this work demonstrates **SMC research methodologies** that could expose other controllable system parameters.
 
 ## ⚠️ Warning
 
@@ -104,9 +110,21 @@ Hardware and firmware locks are tighter on these models. macOS Sequoia introduce
 
 Untested
 
-## How It Works
+## Research Findings
 
-This project is implemented in **Swift** with a C library for low-level SMC operations. The Swift code handles XPC communication and privilege escalation, while the C layer directly interfaces with IOKit for hardware access.
+### The Discovery
+
+Through reverse engineering of `existing commercial tools` using IDA Pro, this research uncovered the specific unlock sequence:
+
+1. Write `Ftst=1` (Force Test flag)
+2. Retry `F0Md=1` (Fan Mode) until `thermalmonitord` releases control
+3. The system transitions from mode 3 (protected) to mode 1 (manual)
+
+This mechanism was **obfuscated in existing commercial tools** (XOR-encrypted SMC keys, runtime decryption) and previously undocumented publicly.
+
+### Implementation
+
+The project is implemented in **Swift** with a C library for low-level SMC operations. The Swift code handles XPC communication and privilege escalation, while the C layer directly interfaces with IOKit for hardware access.
 
 On Apple Silicon Macs, fan control requires working around macOS's thermal management system. The SMC (System Management Controller) accepts fan speed commands, but only when the system is not in "protected" mode.
 
@@ -186,6 +204,17 @@ smc-fan/
 ├── entitlements.plist    Code signing entitlements
 └── Makefile              Build system
 ```
+
+## Future Research Directions
+
+The methodologies used here could reveal other SMC-controllable parameters:
+- **Power Management** - CPU/GPU power limits, TDP controls
+- **Thermal Sensors** - Access to temperature sensors beyond standard APIs
+- **Performance States** - Direct control over P-states, frequency scaling
+- **Battery Management** - Charge limits, health parameters
+- **System Telemetry** - Undocumented sensor data
+
+The SMC contains hundreds of keys. This research provides the framework to explore them.
 
 ## Technical Details
 
