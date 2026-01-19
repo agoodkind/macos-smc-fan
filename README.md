@@ -47,6 +47,20 @@ Hardware and firmware locks are tighter on these models. macOS Sequoia introduce
 
 Untested
 
+### thermalmonitord
+
+`thermalmonitord` (macOS: `/usr/libexec/thermald`) is a userspace daemon responsible for thermal management across Apple platforms (macOS, iOS, iPadOS). It:
+
+- Monitors CPU, GPU, battery, and sensor temperatures
+- Adjusts fan speeds and performance based on thermal policy
+- Enforces mode 3 on Apple Silicon, blocking direct SMC writes to `F0Md`
+- Communicates with SMC via `AppleSMCSensorDispatcher`
+- Publishes thermal state to apps via `NSProcessInfo.thermalState`
+
+**Firmware Fallback:** If `thermalmonitord` is killed or unresponsive, hardware-level thermal protection remains active. The kernel and SMC firmware independently enforce temperature limits, throttle performance, run fans at maximum, and trigger emergency shutdown if thresholds are exceeded. Killing the daemon removes graceful thermal management but does not disable hardware protection—the system will panic or force shutdown if the watchdog timer expires (~180 seconds without check-in).
+
+The daemon runs continuously and reclaims control (reverts to mode 3) when `Ftst` is set back to `0`. The helper daemon must maintain an active connection to preserve manual control. See Apple's documentation on [thermal state notifications](https://developer.apple.com/library/archive/documentation/Performance/Conceptual/power_efficiency_guidelines_osx/RespondToThermalStateChanges.html) and [IOKit thermal warnings](https://developer.apple.com/documentation/iokit/kiopmthermalwarningnotificationkey) for related APIs.
+
 ## Research Findings
 
 ### Discovery Process
@@ -155,20 +169,6 @@ The `F%dMd` key controls fan behavior:
 | `3` | System | `thermalmonitord` has exclusive control, firmware rejects `F0Md` writes |
 
 Mode 3 is the default on Apple Silicon when the system is managing thermals. The unlock sequence transitions the system from mode 3 → 0, then allows setting mode 1.
-
-### thermalmonitord
-
-`thermalmonitord` (macOS: `/usr/libexec/thermald`) is a userspace daemon responsible for thermal management across Apple platforms (macOS, iOS, iPadOS). It:
-
-- Monitors CPU, GPU, battery, and sensor temperatures
-- Adjusts fan speeds and performance based on thermal policy
-- Enforces mode 3 on Apple Silicon, blocking direct SMC writes to `F0Md`
-- Communicates with SMC via `AppleSMCSensorDispatcher`
-- Publishes thermal state to apps via `NSProcessInfo.thermalState`
-
-**Firmware Fallback:** If `thermalmonitord` is killed or unresponsive, hardware-level thermal protection remains active. The kernel and SMC firmware independently enforce temperature limits, throttle performance, run fans at maximum, and trigger emergency shutdown if thresholds are exceeded. Killing the daemon removes graceful thermal management but does not disable hardware protection—the system will panic or force shutdown if the watchdog timer expires (~180 seconds without check-in).
-
-The daemon runs continuously and reclaims control (reverts to mode 3) when `Ftst` is set back to `0`. The helper daemon must maintain an active connection to preserve manual control. See Apple's documentation on [thermal state notifications](https://developer.apple.com/library/archive/documentation/Performance/Conceptual/power_efficiency_guidelines_osx/RespondToThermalStateChanges.html) and [IOKit thermal warnings](https://developer.apple.com/documentation/iokit/kiopmthermalwarningnotificationkey) for related APIs.
 
 ### Error Codes
 
