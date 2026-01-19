@@ -24,6 +24,11 @@ jobs:
     - name: Verify package structure
       run: swift package describe
     
+    - name: Run unit tests
+      env:
+        HELPER_BUNDLE_ID: io.goodkind.smcfanhelper
+      run: swift test --filter DataConversionTests
+    
     - name: Check for build warnings
       run: |
         swift build 2>&1 | grep -i "warning" || echo "No warnings"
