@@ -19,71 +19,6 @@ Beyond fan control, this work demonstrates **SMC research methodologies** that c
 
 **Use entirely at your own risk.** Monitor system temperatures carefully. Not intended for production use.
 
-## Quick Start
-
-### Prerequisites
-
-- Xcode Command Line Tools: `xcode-select --install`
-- **Paid Apple Developer account** - Required for Developer ID certificate
-- Valid Apple Developer ID certificate for code signing
-- Your Apple Team ID (find at <https://developer.apple.com/account>)
-
-### Configuration
-
-Copy the example config and customize with your credentials:
-
-```bash
-cp config.mk.example config.mk
-# Edit config.mk with your values:
-#   CERT_ID - Your Developer ID certificate (find with: security find-identity -v -p codesigning)
-#   TEAM_ID - Your Apple Team ID
-#   BUNDLE_ID_PREFIX - Your bundle identifier prefix (e.g., com.yourname)
-```
-
-### Build
-
-Production build (with code signing):
-```bash
-make all
-```
-
-Development build (IDE/testing):
-```bash
-HELPER_BUNDLE_ID=io.goodkind.smcfanhelper swift build
-```
-
-### Install
-
-```bash
-./build/SMCFanHelper.app/Contents/MacOS/SMCFanInstaller
-# Enter password when prompted
-```
-
-The installer uses `SMJobBless` to install a privileged helper daemon.
-
-### Usage
-
-```bash
-# List fans
-./build/smcfan list
-
-# Set fan speed
-./build/smcfan set 0 4500    # Set fan 0 to 4500 RPM
-
-# Set to minimum (auto-like)
-./build/smcfan auto 0        # Set fan 0 to minimum RPM
-```
-
-### Uninstall
-
-Replace `YOUR_BUNDLE_ID` with your configured bundle identifier prefix:
-
-```bash
-sudo launchctl unload /Library/LaunchDaemons/YOUR_BUNDLE_ID.smcfanhelper.plist
-sudo rm /Library/PrivilegedHelperTools/YOUR_BUNDLE_ID.smcfanhelper
-sudo rm /Library/LaunchDaemons/YOUR_BUNDLE_ID.smcfanhelper.plist
-```
-
 ## Background
 
 ### Evolution of Mac Fan Control
@@ -142,79 +77,13 @@ The tool uses an unlock sequence with retry logic:
 4. `F0Md=1` succeeds, fan control is enabled
 5. Write target RPM to `F0Tg`
 
-This is handled automatically by `smc_unlock_fan_control()` in `smcfan_common.c`.
+This is handled automatically by `smc_unlock_fan_control()` in the C library.
 
 ### Notes
 
 - Setting `Ftst=0` returns control to thermalmonitord
 - Auto mode sets target to minimum RPM while keeping manual control active
 - Fan speeds are clamped to SMC-reported min/max values
-
-## Project Structure
-
-### Runtime Architecture
-
-```text
-smcfan (CLI)
-  │
-  │ XPC
-  └──→ SMCFanHelper (privileged daemon)
-        │
-        │ IOKit
-        └──→ AppleSMC (kernel driver)
-              │
-              └──→ SMC firmware
-```
-
-### Development with Xcode
-
-Open as a Swift Package for full IDE support:
-```bash
-xed .
-```
-
-Provides autocomplete, jump-to-definition, debugging, and refactoring tools.
-
-### Directory Layout
-
-```text
-smc-fan/
-├── Sources/               Source code
-│   ├── smcfan/           CLI tool
-│   │   └── main.swift
-│   ├── smcfanhelper/     XPC helper daemon
-│   │   └── main.swift
-│   ├── installer/        SMJobBless installer
-│   │   └── main.swift
-│   ├── common/           Shared Swift code
-│   │   └── SMCProtocol.swift
-│   └── libsmc/           Low-level C library
-│       ├── smc.c         SMC hardware interface
-│       └── smc.h
-├── Include/              Public headers
-│   └── SMCFan-Bridging-Header.h
-├── templates/            Template files
-│   ├── helper-info.plist.template
-│   ├── helper-launchd.plist.template
-│   └── smcfan_config.h.template
-├── generated/            Auto-generated (gitignored)
-├── build/                Build artifacts (gitignored)
-├── config.mk.example     Template for credentials
-├── config.mk             Your credentials (gitignored)
-├── entitlements.plist    Code signing entitlements
-└── Makefile              Build system
-```
-
-## Future Research Directions
-
-The methodologies used here could reveal other SMC-controllable parameters:
-- **Power Management** - CPU/GPU power limits, TDP controls
-- **Thermal Sensors** - Access to temperature sensors beyond standard APIs
-- **Performance States** - Direct control over P-states, frequency scaling
-- **Battery Management** - Charge limits, health parameters
-- **System Telemetry** - Undocumented sensor data
-
-The SMC contains hundreds of keys. This research provides the framework to explore them.
 
 ## Technical Details
 
@@ -264,3 +133,140 @@ typedef struct {
 ```
 
 **Critical:** Field alignment must be exact. `keyInfo.dataSize` at offset 28, `data8` at offset 42.
+
+## Future Research Directions
+
+The methodologies used here could reveal other SMC-controllable parameters:
+- **Power Management** - CPU/GPU power limits, TDP controls
+- **Thermal Sensors** - Access to temperature sensors beyond standard APIs
+- **Performance States** - Direct control over P-states, frequency scaling
+- **Battery Management** - Charge limits, health parameters
+- **System Telemetry** - Undocumented sensor data
+
+The SMC contains hundreds of keys. This research provides the framework to explore them.
+
+## Quick Start
+
+### Prerequisites
+
+- Xcode Command Line Tools: `xcode-select --install`
+- **Paid Apple Developer account** - Required for Developer ID certificate
+- Valid Apple Developer ID certificate for code signing
+- Your Apple Team ID (find at <https://developer.apple.com/account>)
+
+### Configuration
+
+Copy the example config and customize with your credentials:
+
+```bash
+cp config.mk.example config.mk
+# Edit config.mk with your values:
+#   CERT_ID - Your Developer ID certificate (find with: security find-identity -v -p codesigning)
+#   TEAM_ID - Your Apple Team ID
+#   BUNDLE_ID_PREFIX - Your bundle identifier prefix (e.g., com.yourname)
+```
+
+### Build
+
+Production build (with code signing):
+```bash
+make all
+```
+
+Development build (IDE/testing):
+```bash
+HELPER_BUNDLE_ID=io.goodkind.smcfanhelper swift build
+```
+
+### Install
+
+```bash
+./Products/SMCFanHelper.app/Contents/MacOS/SMCFanInstaller
+# Enter password when prompted
+```
+
+The installer uses `SMJobBless` to install a privileged helper daemon.
+
+### Usage
+
+```bash
+# List fans
+./Products/smcfan list
+
+# Set fan speed
+./Products/smcfan set 0 4500    # Set fan 0 to 4500 RPM
+
+# Set to minimum (auto-like)
+./Products/smcfan auto 0        # Set fan 0 to minimum RPM
+```
+
+### Uninstall
+
+Replace `YOUR_BUNDLE_ID` with your configured bundle identifier prefix:
+
+```bash
+sudo launchctl unload /Library/LaunchDaemons/YOUR_BUNDLE_ID.smcfanhelper.plist
+sudo rm /Library/PrivilegedHelperTools/YOUR_BUNDLE_ID.smcfanhelper
+sudo rm /Library/LaunchDaemons/YOUR_BUNDLE_ID.smcfanhelper.plist
+```
+
+## Project Structure
+
+### Runtime Architecture
+
+```text
+smcfan (CLI)
+  │
+  │ XPC
+  └──→ SMCFanHelper (privileged daemon)
+        │
+        │ IOKit
+        └──→ AppleSMC (kernel driver)
+              │
+              └──→ SMC firmware
+```
+
+### Development with Xcode
+
+Open as a Swift Package for full IDE support:
+```bash
+xed .
+```
+
+Provides autocomplete, jump-to-definition, debugging, and refactoring tools.
+
+### Directory Layout
+
+```text
+smc-fan/
+├── Sources/               Source code
+│   ├── smcfan/           CLI tool
+│   │   └── main.swift
+│   ├── smcfanhelper/     XPC helper daemon
+│   │   └── main.swift
+│   ├── installer/        SMJobBless installer
+│   │   └── main.swift
+│   ├── common/           Shared Swift code
+│   │   ├── SMCProtocol.swift
+│   │   └── Config.swift
+│   └── libsmc/           Low-level C library
+│       ├── smc.c         SMC hardware interface
+│       └── smc.h
+├── Include/              Public headers
+│   └── SMCFan-Bridging-Header.h
+├── templates/            Template files
+│   ├── Info.plist
+│   ├── helper-info.plist.template
+│   ├── helper-launchd.plist.template
+│   └── smcfan_config.h.template
+├── generated/            Auto-generated (gitignored)
+├── Products/             Final binaries (gitignored)
+├── config.mk.example     Template for credentials
+├── config.mk             Your credentials (gitignored)
+├── entitlements.plist    Code signing entitlements
+└── Makefile              Build system
+```
+
+## License
+
+Educational and research use only. See warning above.
