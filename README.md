@@ -48,15 +48,31 @@ Untested
 
 ## Research Findings
 
-### The Discovery
+### Discovery Process
 
-Analysis of existing fan control implementations revealed the specific unlock sequence:
+The research began with observing macOS system behavior and SMC interactions:
 
-1. Write `Ftst=1` (Force Test flag)
-2. Retry `F0Md=1` (Fan Mode) until `thermalmonitord` releases control
-3. The system transitions from mode 3 (protected) to mode 1 (manual)
+**Initial Observations:**
+- Direct writes to `F0Md` (Fan Mode) failed with error `0x82` (`kSMCBadCommand`)
+- Reading `F0Md` consistently returned `3` (system/protected mode)
+- `thermalmonitord` daemon was actively managing thermal state
+- Standard SMC key writes (`F0Tg` for target RPM) were rejected
 
-Commercial implementations often use XOR encoding for SMC keys (decoded at runtime), a common pattern in compiled binaries.
+**Methodology:**
+- Monitored `IOKit` calls to the `AppleSMC` service using system tracing
+- Examined `thermalmonitord` behavior through system logs and dtrace
+- Experimented with various SMC key sequences and timing
+- Tested different write patterns to identify unlock conditions
+
+**Key Discovery:**
+Through systematic testing, the unlock sequence emerged:
+
+1. Write `Ftst=1` (Force Test flag) - always succeeds
+2. Retry `F0Md=1` writes with delays
+3. After ~3-6 seconds, `thermalmonitord` releases its lock
+4. `F0Md=1` succeeds, enabling manual control
+
+This pattern suggests `thermalmonitord` monitors `Ftst` state and temporarily yields control, creating a timing window for mode changes.
 
 ### Implementation
 
