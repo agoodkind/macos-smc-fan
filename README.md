@@ -63,11 +63,11 @@ Experimental testing confirmed `Ftst=1` writes succeeded unconditionally, even i
 
 - Write `Ftst=1` (returns success)
 - Monitor `F0Md` value (initially reads `3`)
-- After 4-6 seconds, `F0Md` transitions to `0`
-- Retry `F0Md=1` write (now succeeds)
+- After 3-4 seconds, `F0Md` transitions to `0`
+- Retry `F0Md=1` write (typically succeeds within 4-6 seconds)
 - Manual control enabled
 
-The mechanism is timing-based. `thermalmonitord` appears to monitor `Ftst` state and temporarily yields control. The unlock is implemented in `smc_unlock_fan_control()` with 100ms retry intervals and a 10 second timeout. SIP remains enabled.
+The mechanism is timing-based. `thermalmonitord` monitors `Ftst` state and temporarily yields control. The unlock is implemented in `smc_unlock_fan_control()` with 100ms retry intervals and a 10 second timeout. SIP remains enabled.
 
 ### Implementation
 
@@ -79,12 +79,14 @@ The project is implemented in **Swift** with a C library for low-level SMC opera
 
 - Setting `Ftst=0` returns control to `thermalmonitord`
 - Auto mode sets target to minimum RPM while keeping manual control active
-- Fan speeds are clamped to SMC-reported min/max values
+- Fan speeds are clamped to SMC-reported min/max values (typical M4 Max: ~2300-7800 RPM)
+- IOKit connection types (0-4) behave identically for SMC access
+- `thermalmonitord` uses private entitlements (`com.apple.private.applesmc.user-access`, `com.apple.private.smcsensor.user-access`) via `AppleSMCSensorDispatcher`, but the `Ftst` unlock mechanism bypasses this path entirely
 
 **Modern Hardware Constraints (M3/M4):**
 
-- Fans cannot be controlled independently - both fans tend to synchronize to similar speeds despite having separate `F0Tg`/`F1Tg` keys
-- Firmware appears to enforce coupled fan behavior
+- Fans cannot be controlled independently—both fans synchronize to similar speeds despite separate `F0Tg`/`F1Tg` keys
+- Firmware enforces coupled fan behavior
 
 ## Technical Details
 
@@ -100,7 +102,7 @@ The project is implemented in **Swift** with a C library for low-level SMC opera
 | `F%dMd` | uint8 | Mode (0=auto, 1=manual, 3=system) |
 | `Ftst` | uint8 | Force/test flag |
 
-Apple Silicon uses IEEE 754 float (4 bytes, little-endian) for RPM values.
+Intel Macs used 2-byte `fpe2` fixed-point format (big-endian). Apple Silicon uses 4-byte IEEE 754 floats (little-endian). Cross-platform code must detect and handle both formats.
 
 ### IOKit Communication
 
@@ -114,6 +116,27 @@ Commands:
 - `9` - Read key info
 - `5` - Read value
 - `6` - Write value
+
+### Error Codes
+
+**IOKit Errors:**
+
+| Code | Name | Description |
+| --- | --- | --- |
+| `0xe00002c2` | `kIOReturnNotPrivileged` | Insufficient permissions (check code signing/entitlements) |
+
+**SMC Errors (returned in `result` field):**
+
+| Code | Name | Description |
+| --- | --- | --- |
+| `0x00` | Success | Operation completed |
+| `0x82` | `kSMCBadCommand` | Firmware rejects write (mode 3 blocking) |
+| `0x84` | `kSMCNotWritable` | Key is read-only |
+| `0x85` | `kSMCNotReadable` | Key is write-only |
+| `0x86` | `kSMCKeyNotFound` | Key does not exist |
+| `0x87` | `kSMCBadFuncParameter` | Invalid parameter (may still apply value) |
+
+Note: `0x87` errors on `F0Tg` writes sometimes succeed—the value is applied despite the error response.
 
 ### Data Structure
 
