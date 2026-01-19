@@ -1,4 +1,5 @@
 # SMC Fan Control Research for Apple Silicon
+[![Swift](https://github.com/agoodkind/macos-smc-fan/actions/workflows/swift.yml/badge.svg)](https://github.com/agoodkind/macos-smc-fan/actions/workflows/swift.yml)
 
 ## Motivation
 
