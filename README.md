@@ -36,8 +36,14 @@ cp config.mk.example config.mk
 
 ### Build
 
+Production build (with code signing):
 ```bash
-make clean && make
+make all
+```
+
+Development build (IDE/testing):
+```bash
+HELPER_BUNDLE_ID=io.goodkind.smcfanhelper swift build
 ```
 
 ### Install
@@ -141,6 +147,15 @@ smcfan (CLI)
               │
               └──→ SMC firmware
 ```
+
+### Development with Xcode
+
+Open as a Swift Package for full IDE support:
+```bash
+xed .
+```
+
+Provides autocomplete, jump-to-definition, debugging, and refactoring tools.
 
 ### Directory Layout
 

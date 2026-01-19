@@ -17,7 +17,8 @@ INCLUDE_DIR = Include
 TEMPLATES_DIR = templates
 GENERATED_DIR = generated
 BUILD_DIR = build
-APP_DIR = $(BUILD_DIR)/SMCFanHelper.app
+PRODUCTS_DIR = Products
+APP_DIR = $(PRODUCTS_DIR)/SMCFanHelper.app
 APP_CONTENTS = $(APP_DIR)/Contents
 APP_MACOS = $(APP_CONTENTS)/MacOS
 APP_RESOURCES = $(APP_CONTENTS)/Library/LaunchServices
@@ -34,7 +35,7 @@ LDFLAGS_XPC = $(LDFLAGS_COMMON) -framework Foundation
 # Targets
 .PHONY: all clean install test test-install test-cli test-unlock
 
-all: $(BUILD_DIR)/smcfan $(APP_CONTENTS)/Info.plist $(APP_DIR)/Contents/MacOS/SMCFanInstaller $(APP_RESOURCES)/$(HELPER_ID)
+all: $(PRODUCTS_DIR)/smcfan $(APP_DIR)/Contents/MacOS/SMCFanInstaller $(APP_RESOURCES)/$(HELPER_ID) $(APP_CONTENTS)/Info.plist
 
 # Build SMC library
 $(BUILD_DIR)/smc.o: $(SOURCES_DIR)/libsmc/smc.c $(SOURCES_DIR)/libsmc/smc.h
@@ -62,9 +63,15 @@ $(GENERATED_DIR)/helper-launchd.plist: $(TEMPLATES_DIR)/helper-launchd.plist.tem
 	    $(TEMPLATES_DIR)/helper-launchd.plist.template > $@
 
 # Build XPC helper daemon
-$(APP_RESOURCES)/$(HELPER_ID): $(SOURCES_DIR)/smcfanhelper/main.swift $(SOURCES_DIR)/common/SMCProtocol.swift $(SOURCES_DIR)/libsmc/smc.h $(BUILD_DIR)/smc.o $(GENERATED_DIR)/smcfan_config.h $(GENERATED_DIR)/helper-info.plist $(GENERATED_DIR)/helper-launchd.plist $(INCLUDE_DIR)/SMCFan-Bridging-Header.h
+$(APP_RESOURCES)/$(HELPER_ID): $(SOURCES_DIR)/smcfanhelper/main.swift $(SOURCES_DIR)/common/SMCProtocol.swift $(SOURCES_DIR)/common/Config.swift $(SOURCES_DIR)/libsmc/smc.h $(BUILD_DIR)/smc.o $(GENERATED_DIR)/smcfan_config.h $(GENERATED_DIR)/helper-info.plist $(GENERATED_DIR)/helper-launchd.plist $(INCLUDE_DIR)/SMCFan-Bridging-Header.h
 	@mkdir -p $(APP_RESOURCES)
-	$(SWIFT) $(SWIFTFLAGS) -o $@ $(SOURCES_DIR)/common/SMCProtocol.swift $(SOURCES_DIR)/smcfanhelper/main.swift $(BUILD_DIR)/smc.o $(LDFLAGS_IOKIT) \
+	$(SWIFT) $(SWIFTFLAGS) -o $@ \
+		-D canImport_smcfan_config \
+		$(SOURCES_DIR)/common/Config.swift \
+		$(SOURCES_DIR)/common/SMCProtocol.swift \
+		$(SOURCES_DIR)/smcfanhelper/main.swift \
+		$(BUILD_DIR)/smc.o \
+		$(LDFLAGS_IOKIT) \
 		-Xlinker -sectcreate -Xlinker __TEXT -Xlinker __info_plist -Xlinker $(GENERATED_DIR)/helper-info.plist \
 		-Xlinker -sectcreate -Xlinker __TEXT -Xlinker __launchd_plist -Xlinker $(GENERATED_DIR)/helper-launchd.plist
 	chmod +x "$@"
@@ -72,25 +79,34 @@ $(APP_RESOURCES)/$(HELPER_ID): $(SOURCES_DIR)/smcfanhelper/main.swift $(SOURCES_
 	codesign -s "$(CERT_ID)" -f --entitlements entitlements.plist --options runtime --timestamp "$@"
 	cp $(GENERATED_DIR)/helper-launchd.plist "$(APP_RESOURCES)/$(HELPER_ID).plist"
 
-# Build installer app
-$(APP_DIR)/Contents/MacOS/SMCFanInstaller: $(SOURCES_DIR)/installer/main.swift $(GENERATED_DIR)/smcfan_config.h $(INCLUDE_DIR)/SMCFan-Bridging-Header.h
+# Build installer app  
+$(APP_DIR)/Contents/MacOS/SMCFanInstaller: $(SOURCES_DIR)/installer/main.swift $(SOURCES_DIR)/common/Config.swift $(GENERATED_DIR)/smcfan_config.h $(INCLUDE_DIR)/SMCFan-Bridging-Header.h
 	@mkdir -p $(APP_MACOS)
-	$(SWIFT) $(SWIFTFLAGS) -o $@ $(SOURCES_DIR)/installer/main.swift $(LDFLAGS_COMMON) -framework Security -framework ServiceManagement
-	@touch "$@"
-	xattr -cr "$(APP_DIR)"
-	xattr -cr "$@"
+	$(SWIFT) $(SWIFTFLAGS) -o $@ \
+		-D canImport_smcfan_config \
+		$(SOURCES_DIR)/common/Config.swift \
+		$(SOURCES_DIR)/installer/main.swift \
+		$(LDFLAGS_COMMON) \
+		-framework Security \
+		-framework ServiceManagement
+	@xattr -cr "$@"
 	codesign -s "$(CERT_ID)" -f --entitlements entitlements.plist --identifier "$(INSTALLER_ID)" --timestamp "$@"
 
 # Copy app Info.plist
-$(APP_CONTENTS)/Info.plist: SMCFanHelper.app/Contents/Info.plist
+$(APP_CONTENTS)/Info.plist: templates/Info.plist
 	@mkdir -p $(APP_CONTENTS)
 	cp "$<" "$@"
 	xattr -cr "$@"
 
 # Build CLI tool
-$(BUILD_DIR)/smcfan: $(SOURCES_DIR)/smcfan/main.swift $(SOURCES_DIR)/common/SMCProtocol.swift $(GENERATED_DIR)/smcfan_config.h $(INCLUDE_DIR)/SMCFan-Bridging-Header.h
-	@mkdir -p $(BUILD_DIR)
-	$(SWIFT) $(SWIFTFLAGS) -o $@ $(SOURCES_DIR)/common/SMCProtocol.swift $(SOURCES_DIR)/smcfan/main.swift $(LDFLAGS_XPC)
+$(PRODUCTS_DIR)/smcfan: $(SOURCES_DIR)/smcfan/main.swift $(SOURCES_DIR)/common/SMCProtocol.swift $(SOURCES_DIR)/common/Config.swift $(GENERATED_DIR)/smcfan_config.h $(INCLUDE_DIR)/SMCFan-Bridging-Header.h
+	@mkdir -p $(PRODUCTS_DIR)
+	$(SWIFT) $(SWIFTFLAGS) -o $@ \
+		-D canImport_smcfan_config \
+		$(SOURCES_DIR)/common/Config.swift \
+		$(SOURCES_DIR)/common/SMCProtocol.swift \
+		$(SOURCES_DIR)/smcfan/main.swift \
+		$(LDFLAGS_XPC)
 	codesign -s "$(CERT_ID)" -f --entitlements entitlements.plist --identifier smcfan --timestamp "$@"
 
 # Install the app (copies to /Applications)
@@ -103,12 +119,12 @@ test-install:
 	/Applications/SMCFanHelper.app/Contents/MacOS/SMCFanInstaller
 
 # Test the CLI tool
-test-cli: $(BUILD_DIR)/smcfan
-	./$(BUILD_DIR)/smcfan list
+test-cli: $(PRODUCTS_DIR)/smcfan
+	./$(PRODUCTS_DIR)/smcfan list
 
 # Clean build artifacts
 clean:
-	rm -rf $(BUILD_DIR) $(GENERATED_DIR)
+	rm -rf $(BUILD_DIR) $(PRODUCTS_DIR) $(GENERATED_DIR)
 
 # Build mode 3 unlock test (if test file exists in research/)
 ifneq (,$(wildcard research/test_mode3_unlock.m))

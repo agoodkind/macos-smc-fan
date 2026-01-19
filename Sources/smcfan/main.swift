@@ -1,4 +1,7 @@
 import Foundation
+#if !canImport_smcfan_config
+import SMCCommon  // SPM build
+#endif
 
 func printUsage(_ programName: String) {
     print("Usage: \(programName) <command> [args...]")
@@ -21,10 +24,10 @@ struct SMCFan {
         }
         
         let command = args[1]
+        let config = SMCFanConfiguration.default
         
-        let helperID = String(utf8String: HELPER_ID) ?? ""
         let connection = NSXPCConnection(
-            machServiceName: helperID,
+            machServiceName: config.helperBundleID,
             options: .privileged
         )
         connection.remoteObjectInterface = NSXPCInterface(

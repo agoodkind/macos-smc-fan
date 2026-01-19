@@ -1,17 +1,33 @@
 import Foundation
 
+// MARK: - Types
+
 /// Fan information returned from SMC
-struct FanInfo {
-    let actualRPM: Float
-    let targetRPM: Float
-    let minRPM: Float
-    let maxRPM: Float
-    let manualMode: Bool
+public struct FanInfo {
+    public let actualRPM: Float
+    public let targetRPM: Float
+    public let minRPM: Float
+    public let maxRPM: Float
+    public let manualMode: Bool
+    
+    public init(
+        actualRPM: Float,
+        targetRPM: Float,
+        minRPM: Float,
+        maxRPM: Float,
+        manualMode: Bool
+    ) {
+        self.actualRPM = actualRPM
+        self.targetRPM = targetRPM
+        self.minRPM = minRPM
+        self.maxRPM = maxRPM
+        self.manualMode = manualMode
+    }
 }
 
 /// XPC protocol for SMC fan control operations
 /// Note: Return values use separate parameters instead of structs for XPC compatibility
-@objc protocol SMCFanHelperProtocol {
+@objc public protocol SMCFanHelperProtocol {
     /// Open connection to SMC
     func smcOpen(reply: @escaping @Sendable (Bool, String?) -> Void)
     

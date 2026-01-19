@@ -1,13 +1,15 @@
 import Foundation
 import Security
 import ServiceManagement
+#if !canImport_smcfan_config
+import SMCCommon  // Import for HELPER_ID
+#endif
 
 @main
 struct SMCFanInstaller {
     static func main() {
-        let helperLabel = String(utf8String: HELPER_ID) ?? ""
-        
-        print("Installing privileged helper: \(helperLabel)")
+        let config = SMCFanConfiguration.default
+        print("Installing privileged helper: \(config.helperBundleID)")
         
         var authRef: AuthorizationRef?
         var status = AuthorizationCreate(
@@ -61,7 +63,7 @@ struct SMCFanInstaller {
         var error: Unmanaged<CFError>?
         let success = SMJobBless(
             kSMDomainSystemLaunchd,
-            helperLabel as CFString,
+            config.helperBundleID as CFString,
             authRef,
             &error
         )
