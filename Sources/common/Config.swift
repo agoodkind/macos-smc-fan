@@ -1,7 +1,6 @@
 import Foundation
 
 /// Configuration for SMC Fan Control
-/// Injected by the consuming application - never hardcoded
 public struct SMCFanConfiguration {
     /// Bundle identifier for the XPC helper service
     public let helperBundleID: String
@@ -9,30 +8,28 @@ public struct SMCFanConfiguration {
     public init(helperBundleID: String) {
         self.helperBundleID = helperBundleID
     }
-    
-    #if canImport_smcfan_config
-    /// Production configuration from generated config (config.mk → smcfan_config.h)
-    public static let `default` = SMCFanConfiguration(
-        helperBundleID: String(cString: HELPER_ID)
-    )
-    #else
-    /// Development configuration from environment
-    /// Set via: HELPER_BUNDLE_ID=com.your.helper swift build
+}
+
+// Default configuration
+extension SMCFanConfiguration {
+    /// Default configuration
+    /// - Production (make all): Uses Config.generated.swift
+    /// - Development (swift build): Uses HELPER_BUNDLE_ID environment variable
     public static let `default`: SMCFanConfiguration = {
+        #if GENERATED_CONFIG
+        // Production: Config.generated.swift provides the value
+        return SMCFanConfiguration(helperBundleID: productionHelperBundleID)
+        #else
+        // Development: environment variable at runtime
         guard let bundleID = ProcessInfo.processInfo.environment["HELPER_BUNDLE_ID"] else {
-            fatalError(
-                """
-                HELPER_BUNDLE_ID environment variable not set.
-                
-                For development builds, set:
-                  HELPER_BUNDLE_ID=com.your.helper swift build
-                
-                For production builds, use:
-                  make all
-                """
-            )
+            fatalError("HELPER_BUNDLE_ID not set. Use: HELPER_BUNDLE_ID=xxx swift build")
         }
         return SMCFanConfiguration(helperBundleID: bundleID)
+        #endif
     }()
-    #endif
 }
+
+// Config.generated.swift defines this when built via Makefile
+#if GENERATED_CONFIG
+private let productionHelperBundleID: String = _productionHelperBundleIDFromGenerated
+#endif
