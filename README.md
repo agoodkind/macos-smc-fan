@@ -65,7 +65,6 @@ Thermal management became significantly more restrictive on these models through
 **Additional Restrictions:**
 
 - **Enhanced Thermal Controller**: Decompiled code analysis reveals a new thermal management component with faster response times (250ms polling under load vs 4000ms idle), resulting in more aggressive daemon reclaim behavior
-- **Synchronized Fan Behavior**: Experimental observation on M4 hardware shows both fans track similar speeds; independent control is limited
 - **More Aggressive Enforcement**: Faster polling makes manual override more challenging to maintain under thermal load
 
 The diagnostic unlock mechanism continues to function for mode transitions. See [Known Limitations](#known-limitations) for technical details.
@@ -84,11 +83,17 @@ Prior research [^7][^8][^9] found the following keys, which were verified for Ap
 | --- | --- | --- |
 | `FNum` | `uint8` | Number of fans |
 | `F%dAc` | `float` | Actual RPM (read-only) |
-| `F%dTg` | `float` | Target RPM |
-| `F%dMn` | `float` | Minimum RPM |
-| `F%dMx` | `float` | Maximum RPM |
+| `F%dTg` | `float` | Target RPM (0 to any value; not bounded by min/max) |
+| `F%dMn` | `float` | Recommended minimum RPM (guideline, not enforced) |
+| `F%dMx` | `float` | Recommended maximum RPM (guideline, not enforced) |
 | `F%dMd` | `uint8` | Mode (0=auto, 1=manual, 3=system) |
 | `Ftst` | `uint8` | Force/test flag |
+
+**Note on Min/Max Values**: The `F%dMn` and `F%dMx` keys report recommended operating ranges, not hard limits. Testing confirms:
+
+- Target can be set to 0 RPM (fan stops completely)
+- Target can be set below the reported minimum (fan will spin at achievable speed)
+- Target can be set above the reported maximum (fan will exceed reported max if physically capable)
 
 **Data Formats:**
 
@@ -178,8 +183,9 @@ The unlock sequence is implemented in `smcUnlockFanControl()` (see `Sources/smcf
 **System Behavior:**
 
 - Setting `Ftst=0` returns control to `thermalmonitord`
-- Auto mode sets target to minimum RPM while keeping manual control active
-- Fan speeds are clamped to SMC-reported min/max values (typical M4 Max: ~2300-7800 RPM)
+- When `thermalmonitord` regains control, fans enter mode 3 (system) and can idle at 0 RPM
+- Fan speeds are NOT strictly bounded by min/max values - these are guidelines only
+- Independent fan control is fully supported on Apple Silicon
 
 **Sleep/Wake Behavior:**
 
@@ -189,7 +195,7 @@ The unlock sequence is implemented in `smcUnlockFanControl()` (see `Sources/smcf
 
 **Modern Hardware Constraints:**
 
-- **Coupled Fans**: Experimental testing on M4 Max hardware shows both fans track similar speeds, with Fan 1 following Fan 0's RPM even when separate `F0Tg`/`F1Tg` target keys are written.
+- Typical M4 Max fan range: ~0-8400+ RPM (physical limits, not SMC-reported min/max)
 
 ## Technical Details
 
@@ -276,23 +282,65 @@ These flags are checked in `thermalmonitord`'s initialization code and can aid i
 
 **Wake Handler**: Decompiled code shows `thermalmonitord` listens for `kIOMessageSystemWillPowerOn` (`0xe0000310`) to re-initialize after wake. The wake handler re-creates power assertions and notifies controllers that the system is awake. Implementations should similarly monitor `NSWorkspace.didWakeNotification` to re-establish manual control after sleep state transitions.
 
-## Known Limitations
+## Fan Control Behavior
 
-### Hardware-Enforced Restrictions
+### Independent Fan Control
 
-The following limitations are imposed by firmware and cannot be bypassed via SMC key manipulation:
+Testing confirms that each fan can be controlled independently on Apple Silicon:
 
-**Coupled Fan Behavior**: Experimental testing on M4 Max hardware shows both fans synchronize speeds despite separate `F0Tg`/`F1Tg` writes, with Fan 1 tracking Fan 0's RPM. This indicates firmware-level coupling where independent fan control is not possible.
+- Setting one fan to manual mode does **not** affect other fans
+- Each fan maintains its own mode (`F%dMd`) and target (`F%dTg`)
+- The unlock sequence must target the specific fan being controlled
+
+### Control Flow
+
+**Enabling Manual Control (per fan):**
+
+1. Write `Ftst=1` to signal diagnostic mode
+2. Retry writing `F%dMd=1` for the target fan until successful (3-6 seconds)
+3. Write target RPM to `F%dTg`
+4. Fan is now under manual control
+
+**Returning to System Control:**
+
+1. When the **last** manual fan returns to automatic, write `Ftst=0`
+2. `thermalmonitord` regains control and sets mode to 3 (system)
+3. Fans can drop to 0 RPM if thermal conditions allow
+
+**Important**: Only reset `Ftst=0` when **all** fans are returning to automatic. If other fans remain in manual mode, only set the target fan's mode to 0.
+
+### Test Results
+
+The following test cases were verified on M4 Max hardware:
+
+| # | Action | Fan 0 Result | Fan 1 Result | Notes |
+| - | ------ | ------------ | ------------ | ----- |
+| 1 | Set Fan 1 to 5000 RPM | Unchanged (Auto) | Manual @ 5000 | Independent control works |
+| 2 | Set Fan 0 to 6000 RPM | Manual @ 6000 | Unchanged (Manual @ 5000) | Both fans independent |
+| 3 | Set Fan 1 to auto | Unchanged (Manual @ 6000) | Auto @ minimum | Partial auto works |
+| 4 | Set Fan 0 to auto (last) | Auto @ 0 RPM | Auto @ 0 RPM | System mode restored |
+| 5 | Set Fan 0 to 0 RPM | Manual @ 0 | Auto @ minimum | Can manually stop fan |
+| 6 | Set Fan 0 to 1000 RPM | Manual @ ~1000 | Unchanged | Below "min" works |
+| 7 | Set Fan 0 to 10000 RPM | Manual @ ~8400 | Unchanged | Above "max" works |
+
+### System Mode and 0 RPM
+
+When `Ftst=0` and `thermalmonitord` regains control:
+
+- Fan mode transitions to 3 (system mode)
+- Fans can spin down to **0 RPM** if thermal conditions allow
+- This is the only way to achieve true idle (0 RPM) under normal operation
+- Manual mode with target 0 also stops fans, but keeps `Ftst=1` active
 
 ### Daemon Reclaim Behavior
 
 Decompiled code analysis reveals `thermalmonitord`'s polling characteristics:
 
-- **Default Polling**: Approximately 4000ms (4 seconds) during idle, configured in `AppleSMCSensorDispatcher`
-- **Fast Mode**: Under thermal load, `MitigationController` reduces polling to approximately 250ms for rapid response
-- **Reclaim Frequency**: During fast mode, the daemon checks fan state every 250ms and will attempt to reclaim control if `Ftst` is not set
+- **Default Polling**: Approximately 4000ms (4 seconds) during idle
+- **Fast Mode**: Under thermal load, polling reduces to approximately 250ms
+- **Reclaim Frequency**: The daemon will reclaim control if `Ftst` is not set
 
-Implementations requiring persistent manual control must maintain `Ftst=1` state and handle rapid reclaim attempts during thermal load conditions.
+Implementations requiring persistent manual control must maintain `Ftst=1` state.
 
 ## Future Research Directions
 
