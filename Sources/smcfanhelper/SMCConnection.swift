@@ -78,10 +78,12 @@ func smcWrite(_ conn: io_connect_t, key: String, value: [UInt8], size: UInt32) -
 
 // MARK: - Fan Control Unlock
 
-/// Unlock fan control by writing Ftst=1 and retrying F0Md=1
-/// This bypasses thermalmonitord's mode 3 lock
+/// Unlock fan control by writing Ftst=1 and retrying mode write for the specified fan.
+/// This bypasses thermalmonitord's mode 3 lock.
+/// Sets the specified fan to manual mode (1) as part of the unlock.
 func smcUnlockFanControl(
     _ conn: io_connect_t,
+    fanIndex: Int = 0,
     maxRetries: Int = 100,
     timeout: TimeInterval = 10.0
 ) -> kern_return_t {
@@ -89,8 +91,9 @@ func smcUnlockFanControl(
     var result = smcWrite(conn, key: SMC_KEY_FAN_TEST, value: [1], size: 1)
     guard result == kIOReturnSuccess else { return result }
     
-    // Step 2: Retry loop for F0Md=1 write
-    let modeKey = String(format: SMC_KEY_FAN_MODE, 0)
+    // Step 2: Retry writing mode=1 to the specified fan until it succeeds
+    // This both verifies unlock and sets the fan to manual mode
+    let modeKey = String(format: SMC_KEY_FAN_MODE, fanIndex)
     let startTime = Date()
     
     for _ in 0..<maxRetries {
