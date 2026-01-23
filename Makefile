@@ -117,19 +117,35 @@ test:
 
 # Run E2E test
 test-e2e: all
-	@echo "=== E2E Test ==="
+	@echo "=== E2E Test: Independent Fan Control ==="
+	@echo ""
 	@echo "Installing helper..."
 	./$(APP_MACOS)/SMCFanInstaller
 	@echo ""
+	@echo "1. Initial state:"
 	./$(PRODUCTS_DIR)/smcfan list
 	@echo ""
-	./$(PRODUCTS_DIR)/smcfan set 0 5000
+	@echo "2. Set Fan 1 to 5000 RPM (Fan 0 should stay Auto):"
+	./$(PRODUCTS_DIR)/smcfan set 1 5000
 	@sleep 2
 	./$(PRODUCTS_DIR)/smcfan list
 	@echo ""
-	./$(PRODUCTS_DIR)/smcfan auto 0
+	@echo "3. Set Fan 0 to 6000 RPM (both fans now Manual):"
+	./$(PRODUCTS_DIR)/smcfan set 0 6000
+	@sleep 2
+	./$(PRODUCTS_DIR)/smcfan list
 	@echo ""
-	@echo "=== Complete ==="
+	@echo "4. Set Fan 1 to auto (Fan 0 should stay Manual):"
+	./$(PRODUCTS_DIR)/smcfan auto 1
+	@sleep 2
+	./$(PRODUCTS_DIR)/smcfan list
+	@echo ""
+	@echo "5. Set Fan 0 to auto (both should return to system mode):"
+	./$(PRODUCTS_DIR)/smcfan auto 0
+	@sleep 5
+	./$(PRODUCTS_DIR)/smcfan list
+	@echo ""
+	@echo "=== E2E Test Complete ==="
 
 # Clean
 clean:
