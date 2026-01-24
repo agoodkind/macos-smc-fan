@@ -4,11 +4,44 @@
 
 ## Motivation
 
-Prior to this research, no public documentation existed for manual fan **control** or persistent writes (e.g., manipulating fan speed) on Apple Silicon. While **reading** sensor data was documented [^6][^9], as far as I can tell, nobody had documented how to bypass the `thermalmonitord` lock to override system policy.
+Prior to this research, no public documentation existed for manual fan **control** or persistent writes (e.g., manipulating fan speed) on Apple Silicon. While **reading** sensor data was documented [^6][^9], no prior work documented a mechanism to transition from system-managed to user-managed fan control.
 
-This project documents the **reverse engineering process**, the discovered **unlock mechanism**, and provides a working implementation. The research reveals how `thermalmonitord` enforces "protected mode" and the specific SMC key sequence required to regain manual control.
+This project documents the **research process**, the discovered **diagnostic mode transition**, and provides a working example implementation. The research reveals how `thermalmonitord` enforces a "System Mode" and the specific SMC key sequence required to enable manual control.
 
 Beyond fan control, this work demonstrates **SMC research methodologies** that could expose other controllable system parameters.
+
+## Methodology
+
+This project documents the analysis of Apple Silicon's thermal management system using a combination of static binary analysis and LLM-assisted code comprehension.
+
+### Toolchain
+
+- **IDA Pro (Hex-Rays Decompiler)**: Used to decompile `AppleSMC.kext` (kernel extension, ~801 functions) and `thermalmonitord` (userspace daemon, ~775 functions) from their stripped arm64e binaries into pseudocode
+- **dtrace**: Runtime tracing of SMC operations and daemon behavior to correlate static analysis with actual execution paths
+- **LLMs**: Applied to analyze tens of thousands of lines of decompiled pseudocode, identify patterns in SMC key handling, and cross-reference function behaviors across binaries
+- **Test Hardware**: MacBook Pro (14-inch, M4 Max, 2024, Apple Silicon) and iMac (Retina 5K, 27-inch, 2019, Intel). Model identifiers: `Mac16,6` and `iMac19,1` respectively
+
+### Approach
+
+1. **Binary Extraction**: Extracted `thermalmonitord` from `/usr/libexec/` and `AppleSMC.kext` from the kernel extension cache
+2. **Decompilation**: Used IDA Pro to generate C-like pseudocode from the arm64e binaries (which include pointer authentication)
+3. **Pattern Analysis**: Fed decompiled output to LLMs with targeted prompts to identify:
+   - SMC key read/write handlers and their error conditions
+   - The `Ftst` (Force Test) flag's role in thermal management state transitions
+   - Polling intervals and control reclaim mechanisms in `thermalmonitord`
+   - Interactions between `thermalmonitord`, `AppleCLPC`, and the RTKit firmware layer
+4. **Experimental Validation**: Confirmed LLM-identified patterns through runtime testing, including timing the unlock sequence, observing mode transitions, and verifying error conditions
+
+### Why LLMs?
+
+Stripped binaries produce decompiled output with generic function names (`FUN_00xxxxxx`) and no comments. Manually analyzing 1.5MB of pseudocode is impractical. LLMs excel at:
+
+- Pattern matching across large codebases (finding all references to specific SMC keys)
+- Inferring function purpose from call patterns and data structures
+- Cross-referencing behavior between related binaries (daemon ↔ kernel driver)
+- Answering targeted questions ("What happens when `Ftst` is set to 1?")
+
+This hybrid approach (traditional binary analysis tools combined with LLM analysis) enabled discoveries that would have taken significantly longer through manual analysis alone.
 
 ## ⚠️ Warning
 
@@ -29,7 +62,7 @@ Beyond fan control, this work demonstrates **SMC research methodologies** that c
 - **SoC (System-on-Chip)**: Apple Silicon (M1-M5+) integrates CPU, GPU, Neural Engine, memory controllers, and management components into a single chip, unlike earlier Macs which had separate components. See Apple's documentation on boot security for more on SoC architecture [^3].
 - **RTKit**: Apple's embedded firmware backend that manages the integrated SMC on Apple Silicon [^6], replacing the older ACPI-based interface used previously.
 - **Daemon**: A background system process (e.g., `thermalmonitord`) that runs with elevated privileges and coordinates system behavior. It monitors thermal pressure [^1] and publishes state changes [^2].
-- **IOKit**: Apple's macOS kernel framework for hardware communication and device access [^2].
+- **IOKit**: Apple's macOS kernel framework for communicating with hardware devices from userspace. It provides a structured way to discover, access, and control device drivers without requiring kernel code. In this project, IOKit is used to open a connection to the `AppleSMC` driver and issue read/write commands to SMC keys [^13].
 
 ### Evolution of macOS SMC-based Fan Control
 
@@ -60,11 +93,11 @@ Note: A separate process called `thermald` also runs on these Macs. Analysis of 
 
 #### M3 and M4 Generation
 
-Thermal management became significantly more restrictive on these models through both firmware and hardware-level changes.
+Thermal management changed slightly, however more research is needed to establish any significant changes.
 
 **Additional Restrictions:**
 
-- **Enhanced Thermal Controller**: Decompiled code analysis reveals a new thermal management component with faster response times (250ms polling under load vs 4000ms idle), resulting in more aggressive daemon reclaim behavior
+- **Thermal Controller Response Times**: Decompiled code analysis possibly reveals a new thermal management component with faster response times (250ms polling under load vs 4000ms idle), resulting in more aggressive daemon reclaim behavior
 - **More Aggressive Enforcement**: Faster polling makes manual override more challenging to maintain under thermal load
 
 The diagnostic unlock mechanism continues to function for mode transitions. See [Known Limitations](#known-limitations) for technical details.
@@ -121,7 +154,7 @@ Through disassembly of `thermalmonitord` and `AppleSMC.kext`, several key archit
 
 1. **`RTKit` Abstraction**: On Apple Silicon, SMC keys like `F0Md` and `Ftst` are not hardcoded in userspace binaries. They are managed by the **`RTKit` firmware** embedded within the SoC [^6]. The `AppleSMC` kernel driver acts as a transparent bridge to this firmware.
 2. **Property-Based Control**: `thermalmonitord` does not write to SMC keys directly. Instead, it uses high-level Objective-C properties (via `IORegistryEntrySetCFProperty`) to communicate with hardware controllers like **`AppleCLPC`** (Closed Loop Power Controller) and **ApplePMGR** (Power Manager). It sets "ceilings" and "mitigations" rather than raw RPMs.
-3. **Mode 3 is a State, not a Command**: "System Mode" (`mode 3`) is not a command sent by the daemon. Rather, it is the state *reported* by the `RTKit` firmware when hardware controllers like `AppleCLPC` are in an active mitigation state. This explains why `thermalmonitord` does not need to "set" mode 3—its very operation causes the hardware to enter and report that state.
+3. **Mode 3 is a State, not a Command**: "System Mode" (`mode 3`) is not a command sent by the daemon. Rather, it is the state *reported* by the `RTKit` firmware when hardware controllers like `AppleCLPC` are in an active mitigation state. This explains why `thermalmonitord` does not need to "set" mode 3; its very operation causes the hardware to enter and report that state.
 4. **`Ftst` Unlock Mechanism**: Decompiled code analysis of `thermalmonitord` reveals the `Ftst=1` write inhibits the `LifetimeServoController` component from asserting thermal targets. Specifically, when `Ftst` is set, the controller's reclaim logic is suppressed, preventing it from sending die temperature targets to `AppleCLPC`. This allows manual fan mode to persist. The daemon's polling loop continues checking sensors but does not override fan settings while in this diagnostic state.
 5. **Model Detection**: The decompiled code includes board ID to configuration mapping that determines which thermal controller to use. M3/M4 models are identified by the `updateCPUFastDieTargetPMP` configuration flag, which enables `AppleDieTempController` instead of `AppleCLPC`. This allows implementations to programmatically detect hardware generation and adjust behavior accordingly.
 6. **Mode 2 (Legacy)**: While value `2` appears in older SMC tools (like `smcFanControl` [^8]) or community databases [^7] as a "manual override" or "forced" mode for T2-equipped Macs, no references to it were found in the Apple Silicon `thermalmonitord` or driver logic.
@@ -136,7 +169,7 @@ System-level tracing using `dtrace` on `thermalmonitord` and `AppleSMC` kernel e
 
 Binary analysis with IDA Pro decompiled `thermalmonitord` and `AppleSMC`, producing tens of thousands of lines of pseudocode. LLMs were employed to analyze this output, searching for patterns in SMC write operations and cross-referencing `Ftst` flag usage. This automated analysis identified `Ftst` as a trigger for thermal management state changes.
 
-Experimental testing identified `Ftst=1` as the key to bypassing the lock. Unlike the mode keys, writes to the `Ftst` (Force Test) key succeeded even when the system was in "System Mode" (mode 3). Timed observation revealed the unlock pattern:
+Experimental testing identified `Ftst=1` as the key to enabling manual control. Unlike the mode keys, writes to the `Ftst` (Force Test) key succeeded even when the system was in "System Mode" (mode 3). Timed observation revealed the unlock pattern:
 
 - Write `Ftst=1` (returns success)
 - Monitor `F0Md` value (initially reads `3`)
@@ -156,7 +189,7 @@ Direct SMC writes from userspace consistently failed with `kIOReturnNotPrivilege
 2. Attempted SMC writes from signed helper (running as root) → SMC reads succeeded, mode writes failed with `0x82`
 3. Applied unlock sequence (`Ftst=1` → retry `F0Md=1`) → **Mode writes succeeded**
 
-The unlock mechanism worked once the process was running as a privileged helper daemon. Analysis of system binaries confirmed that while `thermalmonitord` communicates via `AppleSMCSensorDispatcher`, the `Ftst` unlock bypasses this path using standard `IOKit` calls to `AppleSMC`.
+The unlock mechanism worked once the process was running as a privileged helper daemon. Analysis of system binaries confirmed that while `thermalmonitord` communicates via `AppleSMCSensorDispatcher`, the `Ftst` unlock uses standard `IOKit` calls directly to `AppleSMC`.
 
 However, `thermalmonitord` reclaimed control within seconds of the controlling process exiting. Monitoring `F0Md` after process termination showed mode reverting from 1 → 3.
 
@@ -189,7 +222,7 @@ The unlock sequence is implemented in `smcUnlockFanControl()` (see `Sources/smcf
 
 **Sleep/Wake Behavior:**
 
-- The SMC firmware (`RTKit`) automatically resets `Ftst` to `0` during sleep state transitions. Analysis of `thermalmonitord`'s decompiled sleep handler shows the daemon does not explicitly reset `Ftst`—the firmware performs this reset independently.
+- The SMC firmware (`RTKit`) automatically resets `Ftst` to `0` during sleep state transitions. Analysis of `thermalmonitord`'s decompiled sleep handler shows the daemon does not explicitly reset `Ftst`. The firmware performs this reset independently.
 - Manual fan control is lost on wake and must be re-established. Runtime testing confirms that re-executing the unlock sequence after wake restores control.
 - Implementations should monitor system sleep/wake notifications to handle this reset behavior.
 
@@ -222,7 +255,7 @@ Commands:
 
 Decompiled code analysis reveals the daemon coordinates with hardware controllers including `AppleCLPC` (Closed Loop Power Controller) and `ApplePMGR` (Power Manager) via IOKit property writes. Runtime observation shows the daemon enforces "System Mode" (`F%dMd=3`), which blocks direct SMC fan mode writes until the unlock sequence is applied.
 
-**Firmware Fallback:** If `thermalmonitord` is killed or unresponsive, hardware-level thermal protection remains active. The kernel and SMC firmware independently enforce temperature limits, throttle performance, run fans at maximum, and trigger emergency shutdown if thresholds are exceeded. Killing the daemon removes graceful thermal management but does not disable hardware protection.
+**Firmware Fallback:** Based on the presence of shutdown handlers in decompiled `AppleSMC` code (e.g., `_claimSystemShutdownEvents`, `sysState.ShutdownSystem`) and general embedded systems design principles, hardware-level thermal protection likely remains active if `thermalmonitord` is killed or unresponsive. The SMC firmware is expected to independently enforce temperature limits, throttle performance, and trigger emergency shutdown if thresholds are exceeded. This has not been experimentally verified by killing the daemon under thermal load.
 
 The daemon runs continuously and reclaims control when the unlock mechanism is released. A helper process must maintain an active connection to preserve manual control. See Apple's documentation on thermal state notifications [^1] and IOKit thermal warnings [^2] for related APIs.
 
@@ -247,7 +280,7 @@ The daemon runs continuously and reclaims control when the unlock mechanism is r
 | `0x86` | `kSMCKeyNotFound` | Key does not exist |
 | `0x87` | `kSMCBadFuncParameter` | Invalid parameter (may still apply value) |
 
-Note: `0x87` errors on `F0Tg` writes sometimes succeed—the value is applied despite the error response.
+Note: `0x87` errors on `F0Tg` writes sometimes succeed. The value is applied despite the error response.
 
 ### Data Structure
 
@@ -268,6 +301,8 @@ typedef struct {
 ```
 
 **Critical:** Field alignment must be exact. `keyInfo.dataSize` at offset 28, `data8` at offset 42.
+
+> **Swift Struct Compatibility Note**: Despite initial concerns about Swift struct padding differing from C, testing with `MemoryLayout.offset` confirms that Swift correctly places all fields at the expected kernel ABI offsets. The nested `keyInfo_t` struct has `size=9` but `stride=12`, and Swift's layout engine properly accounts for this when computing parent struct offsets. This means pure Swift implementations can work without C bridging code (see `Sources/smcfanhelper/SMC.swift` for an example). The key is using `MemoryLayout<SMCKeyData_t>.stride` (not `.size`) when calling `IOConnectCallStructMethod`.
 
 ### Debugging
 
@@ -311,17 +346,93 @@ Testing confirms that each fan can be controlled independently on Apple Silicon:
 
 ### Test Results
 
-The following test cases were verified on M4 Max hardware:
+The following measurements were collected on M4 Max hardware (2 fans, reported min=2317, max=7826).
 
-| # | Action | Fan 0 Result | Fan 1 Result | Notes |
-| - | ------ | ------------ | ------------ | ----- |
-| 1 | Set Fan 1 to 5000 RPM | Unchanged (Auto) | Manual @ 5000 | Independent control works |
-| 2 | Set Fan 0 to 6000 RPM | Manual @ 6000 | Unchanged (Manual @ 5000) | Both fans independent |
-| 3 | Set Fan 1 to auto | Unchanged (Manual @ 6000) | Auto @ minimum | Partial auto works |
-| 4 | Set Fan 0 to auto (last) | Auto @ 0 RPM | Auto @ 0 RPM | System mode restored |
-| 5 | Set Fan 0 to 0 RPM | Manual @ 0 | Auto @ minimum | Can manually stop fan |
-| 6 | Set Fan 0 to 1000 RPM | Manual @ ~1000 | Unchanged | Below "min" works |
-| 7 | Set Fan 0 to 10000 RPM | Manual @ ~8400 | Unchanged | Above "max" works |
+#### Command Timing
+
+| Transition Type | Command Time | Notes |
+|-----------------|--------------|-------|
+| Auto → Manual (first fan) | ~5-6.5s | Includes `Ftst=1` unlock + mode retry loop |
+| Auto → Manual (subsequent fan) | ~20ms | `Ftst` already set, just set mode |
+| Manual → Manual (RPM change) | ~20ms | No mode change needed |
+| Manual → Auto (not last) | ~20ms | Just clear mode, keep `Ftst=1` |
+| Manual → Auto (last fan) | ~20ms | Triggers `Ftst=0` and daemon reclaim |
+
+#### RPM Ramp Timing
+
+| RPM Delta | Time to Stable | Notes |
+|-----------|----------------|-------|
+| 0 → 5000 | ~4s | Initial spin-up from stopped |
+| 5000 → 7000 | ~4s | Within operating range |
+| 7000 → 0 | ~1s | Spin-down is faster than spin-up |
+| 8500 → 0 | ~1s | High RPM to stop |
+
+#### State Transition Table
+
+Each row shows a tested transition with measured results.
+
+| From State | Action | To State | Cmd (ms) | Stable (ms) | Side Effects |
+|------------|--------|----------|----------|-------------|--------------|
+| F0: A@0, F1: A@0 | set 0 5000 | F0: M@5000, F1: A@2500 | 5252 | 8000 | F1 wakes to auto min |
+| F0: M@5000, F1: A@2500 | set 0 7000 | F0: M@7000, F1: A@2500 | 22 | 4500 | - |
+| F0: M@7000, F1: A@2500 | auto 0 | F0: A@0, F1: A@0 | 25 | 4500 | System mode restored |
+| F0: A@0, F1: A@0 | set 0 10000 | F0: M@8560, F1: A@2500 | 5085 | 8000 | Clamped at hw max ~8560 |
+| F0: M@8560, F1: A@2500 | set 0 0 | F0: M@0, F1: A@2500 | 22 | 1000 | Fan stops completely |
+| F0: A@0, F1: A@0 | set 0 1000 | F0: M@1000, F1: A@2500 | 6657 | 9000 | Below "min" works |
+| F0: M@1000, F1: A@2500 | set 1 6000 | F0: M@1000, F1: M@6000 | 21 | 5000 | Both fans independent |
+
+**Legend:** `F0`/`F1` = Fan 0/1, `A` = Auto, `M` = Manual, `@RPM` = actual RPM
+
+#### State Diagram
+
+```
+                              ┌─────────────────────────────────┐
+                              │         SYSTEM IDLE             │
+                              │   F0: Auto @ 0, F1: Auto @ 0    │
+                              │   Ftst=0, thermalmonitord ctrl  │
+                              └─────────────┬───────────────────┘
+                                            │
+                          set fan N to RPM  │  (~5-6s unlock)
+                                            ▼
+                              ┌─────────────────────────────────┐
+                              │       DIAGNOSTIC MODE           │
+                              │   Ftst=1, partial manual ctrl   │
+                              │   Other fans wake to auto min   │
+                              └─────────────┬───────────────────┘
+                                            │
+              ┌─────────────────────────────┼─────────────────────────────┐
+              │                             │                             │
+              ▼                             ▼                             ▼
+    ┌─────────────────┐         ┌─────────────────────┐       ┌─────────────────┐
+    │  ONE FAN MANUAL │         │  BOTH FANS MANUAL   │       │   RPM CHANGE    │
+    │  F0: M, F1: A   │◀───────▶│  F0: M, F1: M       │──────▶│   (~20ms cmd)   │
+    │  (~2500 auto)   │ set 1   │  Independent ctrl   │       │   ~4s to stable │
+    └────────┬────────┘         └──────────┬──────────┘       └─────────────────┘
+             │                             │
+             │ auto 0 (last)               │ auto N (not last)
+             │ (~20ms + 4-5s reclaim)      │ (~20ms)
+             ▼                             ▼
+    ┌─────────────────┐         ┌─────────────────────┐
+    │  SYSTEM IDLE    │         │  PARTIAL AUTO       │
+    │  Ftst=0         │◀────────│  Ftst=1 maintained  │
+    │  F0: A@0, F1:A@0│         │  Other fan: Manual  │
+    └─────────────────┘         └─────────────────────┘
+```
+
+#### Edge Case Behavior
+
+| Requested | Reported Limits | Actual Result | Notes |
+|-----------|-----------------|---------------|-------|
+| 0 RPM | min=2317 | 0 RPM | Fan stops completely |
+| 1000 RPM | min=2317 | ~1000 RPM | Below "min" works |
+| 10000 RPM | max=7826 | ~8560 RPM | Hardware caps above reported max |
+
+**Key Observations:**
+
+- The reported min/max values are thermal management thresholds, not hardware limits
+- Hardware can exceed reported max (~8560 actual vs 7826 reported)
+- Hardware can go below reported min (1000 actual vs 2317 reported)
+- Setting 0 RPM in manual mode stops the fan completely
 
 ### System Mode and 0 RPM
 
@@ -342,32 +453,12 @@ Decompiled code analysis reveals `thermalmonitord`'s polling characteristics:
 
 Implementations requiring persistent manual control must maintain `Ftst=1` state.
 
-## Future Research Directions
-
-The methodologies used here could reveal other SMC-controllable parameters:
-
-- **Power Management** - CPU/GPU power limits, TDP controls
-- **Thermal Sensors** - Access to temperature sensors beyond standard APIs
-- **Performance States** - Direct control over P-states, frequency scaling
-- **Battery Management** - Charge limits, health parameters
-- **System Telemetry** - Undocumented sensor data
-
-### Alternative Control Mechanisms
-
-Decompiled code analysis has identified potential alternative approaches that may provide cleaner or more persistent control than the `Ftst` unlock mechanism:
-
-**Plist-Based Thermal Targets** (Untested): Analysis of `thermalmonitord`'s decompiled configuration monitoring code shows the daemon reads `/Library/Preferences/SystemConfiguration/com.apple.cltm.plist` for override values including `LifetimeServoDieTempTarget`. Setting this key to a low temperature value might cause the thermal servo loop to maximize fan speeds in an attempt to reach the target, providing persistent control without active processes. This approach uses the OS's native thermal management logic and would survive reboots.
-
-**Direct IOKit Property Writes** (Untested): Decompiled code shows the daemon writes thermal targets to hardware controllers using `IORegistryEntrySetCFProperty`. Properties including `LifetimeServoDieTemperatureTargetPropertyKey` (M1/M2) and `LifetimeServoFastDieTemperatureTarget` (M3/M4) are written to either the `AppleCLPC` or `AppleDieTempController` service. Running as root might allow direct property writes to these services, bypassing `thermalmonitord` entirely, though required entitlements and access restrictions require investigation.
-
-**Alternative Diagnostic Keys**: Beyond `Ftst`, the decompiled code references other thermal and diagnostic keys including `TG0B`, `TG0V`, `zETM`, `zEAR`, and `TGraph`. Analysis indicates `Ftst` is the primary diagnostic override for fan control, with no evidence of additional "master unlock" keys.
-
 ## Quick Start
 
 ### Prerequisites
 
 - Xcode Command Line Tools: `xcode-select --install`
-- **Paid Apple Developer account** — **REQUIRED**. A paid account is necessary to obtain a Developer ID certificate for code signing the privileged helper daemon.
+- **Paid Apple Developer account (REQUIRED)**. A paid account is necessary to obtain a Developer ID certificate for code signing the privileged helper daemon.
 - Valid Apple Developer ID certificate for code signing.
 - Your Apple Team ID (find at <https://developer.apple.com/account>).
 
@@ -456,43 +547,63 @@ Open as a Swift Package for full IDE support:
 xed .
 ```
 
-Provides autocomplete, jump-to-definition, debugging, and refactoring tools.
+## Further Testing & Research
 
-### Directory Layout
+The following claims require additional verification, and the methodologies used here could reveal other SMC-controllable parameters.
 
-```text
-smc-fan/
-├── Sources/               Source code
-│   ├── smcfan/           CLI tool
-│   │   └── main.swift
-│   ├── smcfanhelper/     XPC helper daemon
-│   │   └── main.swift
-│   ├── installer/        `SMJobBless` installer
-│   │   └── main.swift
-│   ├── common/           Shared Swift code
-│   │   ├── SMCProtocol.swift
-│   │   └── Config.swift
-│   └── libsmc/           Low-level C library
-│       ├── smc.c         SMC hardware interface
-│       └── smc.h
-├── Include/              Public headers
-│   └── SMCFan-Bridging-Header.h
-├── templates/            Template files
-│   ├── Info.plist
-│   ├── helper-info.plist.template
-│   ├── helper-launchd.plist.template
-│   └── smcfan_config.h.template
-├── generated/            Auto-generated (gitignored)
-├── Products/             Final binaries (gitignored)
-├── config.mk.example     Template for credentials
-├── config.mk             Your credentials (gitignored)
-└── Makefile              Build system
-```
+### Hardware Compatibility
+
+| Item | Status | Notes |
+|------|--------|-------|
+| M5+ chip compatibility | **Untested** | Unlock mechanism and SMC key schema assumed consistent but not verified |
+| M1/M2 generation testing | **Partial** | Decompiled code suggests consistency, but runtime testing was primarily on M4 Max |
+| T2-equipped Macs | **Untested** | Mode 2 behavior referenced in prior work but not verified |
+| Mac Studio / Mac Pro | **Untested** | Multi-fan behavior on desktop hardware with 2+ fans |
+
+### Inferred Behaviors
+
+| Item | Status | Evidence |
+|------|--------|----------|
+| Firmware fallback on daemon kill | **Not verified** | Inferred from `_claimSystemShutdownEvents` and `sysState.ShutdownSystem` in decompiled `AppleSMC`. Not tested by killing `thermalmonitord` under thermal load. |
+| Sleep/wake `Ftst` reset | **Inferred** | Decompiled sleep handler analysis suggests firmware resets `Ftst`, not the daemon. Runtime testing confirms control loss on wake, but firmware-level reset not directly observed. |
+| Polling intervals (4000ms/250ms) | **Inferred** | Values extracted from decompiled `thermalmonitord`. Actual timing may vary by macOS version or hardware. |
+| M3/M4 thermal controller changes | **Partial** | `updateCPUFastDieTargetPMP` flag identified, but behavioral differences not fully characterized. |
+
+### Alternative Control Mechanisms
+
+Decompiled code analysis has identified potential alternative approaches that may provide cleaner or more persistent control than the `Ftst` unlock mechanism:
+
+| Approach | Status | Notes |
+|----------|--------|-------|
+| Plist-based thermal targets | **Untested** | `thermalmonitord` reads `/Library/Preferences/SystemConfiguration/com.apple.cltm.plist` for `LifetimeServoDieTempTarget`. Setting a low temperature may cause fans to maximize. Would survive reboots. |
+| Direct IOKit property writes | **Untested** | Properties like `LifetimeServoDieTemperatureTargetPropertyKey` (M1/M2) and `LifetimeServoFastDieTemperatureTarget` (M3/M4) written to `AppleCLPC` or `AppleDieTempController`. May communicate directly with hardware controllers. |
+| Alternative diagnostic keys | **Partial** | `TG0B`, `TG0V`, `zETM`, `zEAR`, `TGraph` identified but not tested for fan control. `Ftst` appears to be the primary diagnostic override. |
+
+### Future Research Directions
+
+The same research methodologies could reveal other SMC-controllable parameters:
+
+| Area | Potential |
+|------|-----------|
+| Power Management | CPU/GPU power limits, TDP controls |
+| Thermal Sensors | Access to temperature sensors beyond standard APIs |
+| Performance States | Direct control over P-states, frequency scaling |
+| Battery Management | Charge limits, health parameters |
+| System Telemetry | Undocumented sensor data |
+
+### Edge Cases
+
+| Item | Status | Notes |
+|------|--------|-------|
+| `0x87` error on `F0Tg` writes | **Observed** | Value sometimes applied despite error response. Root cause unclear. |
+| Boot arguments (`smc-debug`, `smc-logsize`) | **Untested** | Identified in decompiled code but not tested for output |
+| Helper crash with `Ftst=1` active | **Untested** | Potential thermal management gap if helper crashes without resetting `Ftst` |
+| Fan coupling on M3/M4 | **Partial** | Community reports suggest synchronized fan behavior on some models. Not consistently reproduced. |
 
 ## References
 
 [^1]: [Respond to Thermal State Changes](https://developer.apple.com/library/archive/documentation/Performance/Conceptual/power_efficiency_guidelines_osx/RespondToThermalStateChanges.html) - `NSProcessInfo.thermalState` API
-[^2]: [kIOPMThermalWarningNotificationKey](https://developer.apple.com/documentation/iokit/kiopmthermalwarningnotificationkey) - IOKit thermal notifications
+[^2]: [IOKit Power Management Release Notes](https://developer.apple.com/library/archive/releasenotes/Darwin/RN-IOKitPowerManagment/index.html) - IOKit power management and notification APIs
 [^3]: [Apple Platform Security - Boot Modes](https://support.apple.com/guide/security/sec10869885b) - Firmware security architecture
 [^4]: [SMJobBless](https://developer.apple.com/documentation/servicemanagement/smjobbless(_:_:_:_:)) - Privileged helper installation
 [^5]: [Apple SMC Data Types](https://cbosoft.github.io/blog/2020/07/17/apple-smc/) - `fpe2` format encoding
@@ -500,10 +611,11 @@ smc-fan/
 [^7]: [SMC Sensor Keys Reference](https://www.marukka.ch/mac/mac-smc-sensor-keys) - Comprehensive SMC key catalog
 [^8]: [smcFanControl Repository](https://github.com/hholtmann/smcFanControl) - Open-source fan control tool
 [^9]: [Linux Kernel applesmc Driver](https://github.com/torvalds/linux/blob/master/drivers/hwmon/applesmc.c) - Authoritative source for SMC key schema and protocol
-[^10]: [The iPhone Wiki - thermalmonitord](https://www.theiphonewiki.com/wiki/Thermalmonitord) - Technical database documenting system daemon functionality
+[^10]: [Thermals and macOS - Dave MacLachlan](https://dmaclach.medium.com/thermals-and-macos-c0db81062889) - Thermal monitoring APIs and `thermald`/`thermalmonitord` behavior on macOS
 [^11]: Jonathan Levin, "Mac OS X and iOS Internals, Volume I: User Space" - System daemons and thermal management architecture
-[^12]: [Apple Support - Device Temperature Management](https://support.apple.com/en-us/HT201678) - Thermal mitigation behaviors
+[^12]: [Keep your Mac laptop within acceptable operating temperatures](https://support.apple.com/en-us/102336) - Mac thermal management and fan behavior
+[^13]: [IOKit Fundamentals](https://developer.apple.com/library/archive/documentation/DeviceDrivers/Conceptual/IOKitFundamentals/Introduction/Introduction.html) - Apple's device driver and hardware access framework
 
 ## License
 
-Educational and research use only. See [warning](#️-warning) above.
+Educational and research use only. See [LICENSE.md](LICENSE.md) for full terms and legal notice.

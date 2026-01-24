@@ -117,31 +117,56 @@ test:
 
 # Run E2E test
 test-e2e: all
-	@echo "=== E2E Test: Independent Fan Control ==="
+	@echo "=== E2E Test: Fan Control ==="
 	@echo ""
 	@echo "Installing helper..."
 	./$(APP_MACOS)/SMCFanInstaller
 	@echo ""
+	@echo "--- Part 1: Independent Fan Control ---"
+	@echo ""
 	@echo "1. Initial state:"
 	./$(PRODUCTS_DIR)/smcfan list
 	@echo ""
-	@echo "2. Set Fan 1 to 5000 RPM (Fan 0 should stay Auto):"
+	@echo "2. Set Fan 1 to 5000 RPM (Fan 0 should stay Auto, but wake to min):"
 	./$(PRODUCTS_DIR)/smcfan set 1 5000
-	@sleep 2
+	@sleep 3
 	./$(PRODUCTS_DIR)/smcfan list
 	@echo ""
 	@echo "3. Set Fan 0 to 6000 RPM (both fans now Manual):"
 	./$(PRODUCTS_DIR)/smcfan set 0 6000
-	@sleep 2
+	@sleep 3
 	./$(PRODUCTS_DIR)/smcfan list
 	@echo ""
 	@echo "4. Set Fan 1 to auto (Fan 0 should stay Manual):"
 	./$(PRODUCTS_DIR)/smcfan auto 1
-	@sleep 2
+	@sleep 3
 	./$(PRODUCTS_DIR)/smcfan list
 	@echo ""
 	@echo "5. Set Fan 0 to auto (both should return to system mode):"
 	./$(PRODUCTS_DIR)/smcfan auto 0
+	@sleep 5
+	./$(PRODUCTS_DIR)/smcfan list
+	@echo ""
+	@echo "--- Part 2: Edge Cases ---"
+	@echo ""
+	@echo "6. Set Fan 0 to 0 RPM (manual stop - fan should stop completely):"
+	./$(PRODUCTS_DIR)/smcfan set 0 0
+	@sleep 2
+	./$(PRODUCTS_DIR)/smcfan list
+	@echo ""
+	@echo "7. Set Fan 0 to 1000 RPM (below reported min of ~2317):"
+	./$(PRODUCTS_DIR)/smcfan set 0 1000
+	@sleep 3
+	./$(PRODUCTS_DIR)/smcfan list
+	@echo ""
+	@echo "8. Set Fan 0 to 10000 RPM (above reported max - should clamp to ~8500):"
+	./$(PRODUCTS_DIR)/smcfan set 0 10000
+	@sleep 5
+	./$(PRODUCTS_DIR)/smcfan list
+	@echo ""
+	@echo "9. Cleanup - return to auto:"
+	./$(PRODUCTS_DIR)/smcfan auto 0
+	./$(PRODUCTS_DIR)/smcfan auto 1
 	@sleep 5
 	./$(PRODUCTS_DIR)/smcfan list
 	@echo ""

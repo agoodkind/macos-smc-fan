@@ -1,7 +1,6 @@
 import Foundation
 import IOKit
 #if !DIRECT_BUILD
-    import libsmc
     import SMCCommon
 #endif
 
@@ -49,7 +48,7 @@ class SMCFanHelper: NSObject, NSXPCListenerDelegate, SMCFanHelperProtocol {
 
     private func ensureSMCConnection() throws {
         if smcConnection != 0 {
-            let (result, _, _) = smcRead(smcConnection, key: SMC_KEY_FNUM)
+            let (result, _, _) = smcRead(smcConnection, key: SMCKey.fanCount)
             if result == kIOReturnSuccess {
                 return
             }
@@ -142,7 +141,7 @@ class SMCFanHelper: NSObject, NSXPCListenerDelegate, SMCFanHelperProtocol {
             return
         }
 
-        let (result, value, _) = smcRead(smcConnection, key: SMC_KEY_FNUM)
+        let (result, value, _) = smcRead(smcConnection, key: SMCKey.fanCount)
 
         if result == kIOReturnSuccess {
             reply(true, UInt(value[0]), nil)
@@ -162,12 +161,12 @@ class SMCFanHelper: NSObject, NSXPCListenerDelegate, SMCFanHelperProtocol {
             return
         }
 
-        let actualRPM = readFloat(fanIndex: fanIndex, keyFormat: SMC_KEY_FAN_ACTUAL) ?? 0
-        let targetRPM = readFloat(fanIndex: fanIndex, keyFormat: SMC_KEY_FAN_TARGET) ?? 0
-        let minRPM = readFloat(fanIndex: fanIndex, keyFormat: SMC_KEY_FAN_MIN) ?? 0
-        let maxRPM = readFloat(fanIndex: fanIndex, keyFormat: SMC_KEY_FAN_MAX) ?? 0
+        let actualRPM = readFloat(fanIndex: fanIndex, keyFormat: SMCKey.fanActual) ?? 0
+        let targetRPM = readFloat(fanIndex: fanIndex, keyFormat: SMCKey.fanTarget) ?? 0
+        let minRPM = readFloat(fanIndex: fanIndex, keyFormat: SMCKey.fanMin) ?? 0
+        let maxRPM = readFloat(fanIndex: fanIndex, keyFormat: SMCKey.fanMax) ?? 0
 
-        let modeKey = String(format: SMC_KEY_FAN_MODE, Int(fanIndex))
+        let modeKey = String(format: SMCKey.fanMode, Int(fanIndex))
         let (modeResult, modeValue, _) = smcRead(smcConnection, key: modeKey)
         let manualMode = (modeResult == kIOReturnSuccess && modeValue[0] == 1)
 
@@ -189,16 +188,23 @@ class SMCFanHelper: NSObject, NSXPCListenerDelegate, SMCFanHelperProtocol {
             return
         }
 
-        // Unlock fan control for this specific fan (required for Apple Silicon)
-        // This also sets the fan to manual mode
-        let unlockResult = smcUnlockFanControl(smcConnection, fanIndex: Int(fanIndex))
-        guard unlockResult == kIOReturnSuccess else {
-            reply(false, "Failed to unlock: 0x\(String(unlockResult, radix: 16))")
-            return
+        // Check if fan is already in manual mode (mode == 1)
+        let modeKey = String(format: SMCKey.fanMode, Int(fanIndex))
+        let (modeResult, modeBytes, _) = smcRead(smcConnection, key: modeKey)
+        let alreadyManual = (modeResult == kIOReturnSuccess && !modeBytes.isEmpty && modeBytes[0] == 1)
+
+        if !alreadyManual {
+            // Unlock fan control for this specific fan (required for Apple Silicon)
+            // This also sets the fan to manual mode
+            let unlockResult = smcUnlockFanControl(smcConnection, fanIndex: Int(fanIndex))
+            guard unlockResult == kIOReturnSuccess else {
+                reply(false, "Failed to unlock: 0x\(String(unlockResult, radix: 16))")
+                return
+            }
         }
 
         // Set target RPM
-        let key = String(format: SMC_KEY_FAN_TARGET, Int(fanIndex))
+        let key = String(format: SMCKey.fanTarget, Int(fanIndex))
         let value = floatToBytes(rpm, size: 4)
         let writeResult = smcWrite(smcConnection, key: key, value: value, size: 4)
 
@@ -219,47 +225,48 @@ class SMCFanHelper: NSObject, NSXPCListenerDelegate, SMCFanHelperProtocol {
             return
         }
 
-        // Check how many fans are currently in manual mode (mode == 1)
-        let (numResult, numBytes, _) = smcRead(smcConnection, key: SMC_KEY_FNUM)
+        // Check how many OTHER fans are currently in manual mode (mode == 1)
+        let (numResult, numBytes, _) = smcRead(smcConnection, key: SMCKey.fanCount)
         guard numResult == kIOReturnSuccess, !numBytes.isEmpty else {
             reply(false, "Failed to read fan count")
             return
         }
 
         let fanCount = Int(numBytes[0])
-        var manualFanCount = 0
+        var otherFansManual = 0
 
         for i in 0 ..< fanCount {
-            let checkKey = String(format: SMC_KEY_FAN_MODE, i)
+            if i == Int(fanIndex) { continue }  // Skip the fan we're setting to auto
+            let checkKey = String(format: SMCKey.fanMode, i)
             let (_, checkBytes, _) = smcRead(smcConnection, key: checkKey)
             if !checkBytes.isEmpty, checkBytes[0] == 1 {
-                manualFanCount += 1
+                otherFansManual += 1
             }
         }
 
-        // If this is the last manual fan, reset Ftst first to return control to thermalmonitord
-        // This will cause mode to transition from 1 -> 0 -> 3 (system mode)
-        if manualFanCount <= 1 {
-            let resetResult = smcWrite(smcConnection, key: SMC_KEY_FAN_TEST, value: [0], size: 1)
+        // Set this fan's mode and target regardless
+        let modeKey = String(format: SMCKey.fanMode, Int(fanIndex))
+        let modeResult = smcWrite(smcConnection, key: modeKey, value: [0], size: 1)
+        if modeResult != kIOReturnSuccess {
+            NSLog("SMCFanHelper: Warning - failed to set auto mode: 0x%x", modeResult)
+        }
+
+        let targetKey = String(format: SMCKey.fanTarget, Int(fanIndex))
+        let writeVal = floatToBytes(0, size: 4)
+        _ = smcWrite(smcConnection, key: targetKey, value: writeVal, size: 4)
+        
+        if otherFansManual > 0 {
+            NSLog("SMCFanHelper: Set fan %lu to auto, other fans still manual", fanIndex)
+        } else {
+            // This is the last manual fan - reset Ftst to return full control to thermalmonitord
+            // This allows the system to transition mode from 0 -> 3 (system mode) and spin down to 0 RPM
+            let resetResult = smcWrite(smcConnection, key: SMCKey.fanTest, value: [0], size: 1)
             if resetResult != kIOReturnSuccess {
                 NSLog("SMCFanHelper: Warning - failed to reset Ftst: 0x%x", resetResult)
             }
-            NSLog("SMCFanHelper: Reset Ftst, returning control to thermalmonitord")
-        } else {
-            // Other fans are still manual, just set this fan's mode to 0 (auto)
-            let modeKey = String(format: SMC_KEY_FAN_MODE, Int(fanIndex))
-            let modeResult = smcWrite(smcConnection, key: modeKey, value: [0], size: 1)
-            if modeResult != kIOReturnSuccess {
-                NSLog("SMCFanHelper: Warning - failed to set auto mode: 0x%x", modeResult)
-            }
-
-            // Reset target to 0 to let system decide
-            let targetKey = String(format: SMC_KEY_FAN_TARGET, Int(fanIndex))
-            let writeVal = floatToBytes(0, size: 4)
-            _ = smcWrite(smcConnection, key: targetKey, value: writeVal, size: 4)
+            NSLog("SMCFanHelper: Reset Ftst, returning full control to thermalmonitord")
         }
 
-        NSLog("SMCFanHelper: Set fan %lu to automatic", fanIndex)
         reply(true, nil)
     }
 }

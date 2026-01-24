@@ -20,35 +20,36 @@ let package = Package(
                 .headerSearchPath("."),
             ]
         ),
-        
+
         // Common Swift protocol and types
         .target(
             name: "SMCCommon",
             dependencies: [],
             path: "Sources/common"
         ),
-        
+
         // CLI tool (XPC client)
         .executableTarget(
             name: "smcfan",
             dependencies: ["SMCCommon"],
             path: "Sources/smcfan"
         ),
-        
+
         // XPC helper daemon (privileged service)
+        // Note: Pure Swift SMC implementation - no C dependency required
         .executableTarget(
             name: "smcfanhelper",
-            dependencies: ["SMCCommon", "libsmc"],
+            dependencies: ["SMCCommon"],
             path: "Sources/smcfanhelper"
         ),
-        
+
         // SMJobBless installer
         .executableTarget(
             name: "installer",
             dependencies: ["SMCCommon"],
             path: "Sources/installer"
         ),
-        
+
         // Tests
         .testTarget(
             name: "SMCFanTests",
