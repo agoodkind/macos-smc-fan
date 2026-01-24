@@ -10,6 +10,21 @@ This project documents the **research process**, the discovered **diagnostic mod
 
 Beyond fan control, this work demonstrates **SMC research methodologies** that could expose other controllable system parameters.
 
+## ⚠️ Warning
+
+**For educational and research purposes only.** This software:
+
+- Can cause **hardware damage** if fans are set incorrectly
+- May interfere with macOS thermal management
+- Is provided **without any warranty**
+- Is **not affiliated with or endorsed by Apple Inc.**
+
+**Use entirely at your own risk.** Monitor system temperatures carefully. Not intended for production use.
+
+## License
+
+Educational and research use only. See [LICENSE.md](LICENSE.md) for full terms and legal notice.
+
 ## Methodology
 
 This project documents the analysis of Apple Silicon's thermal management system using a combination of static binary analysis and LLM-assisted code comprehension.
@@ -42,17 +57,6 @@ Stripped binaries produce decompiled output with generic function names (`FUN_00
 - Answering targeted questions ("What happens when `Ftst` is set to 1?")
 
 This hybrid approach (traditional binary analysis tools combined with LLM analysis) enabled discoveries that would have taken significantly longer through manual analysis alone.
-
-## ⚠️ Warning
-
-**For educational and research purposes only.** This software:
-
-- Can cause **hardware damage** if fans are set incorrectly
-- May interfere with macOS thermal management
-- Is provided **without any warranty**
-- Is **not affiliated with or endorsed by Apple Inc.**
-
-**Use entirely at your own risk.** Monitor system temperatures carefully. Not intended for production use.
 
 ## Background
 
@@ -100,7 +104,7 @@ Thermal management changed slightly, however more research is needed to establis
 - **Thermal Controller Response Times**: Decompiled code analysis possibly reveals a new thermal management component with faster response times (250ms polling under load vs 4000ms idle), resulting in more aggressive daemon reclaim behavior
 - **More Aggressive Enforcement**: Faster polling makes manual override more challenging to maintain under thermal load
 
-The diagnostic unlock mechanism continues to function for mode transitions. See [Known Limitations](#known-limitations) for technical details.
+The diagnostic unlock mechanism continues to function for mode transitions. See [Daemon Reclaim Behavior](#daemon-reclaim-behavior) for technical details.
 
 #### M5+
 
@@ -217,7 +221,7 @@ The unlock sequence is implemented in `smcUnlockFanControl()` (see `Sources/smcf
 
 - Setting `Ftst=0` returns control to `thermalmonitord`
 - When `thermalmonitord` regains control, fans enter mode 3 (system) and can idle at 0 RPM
-- Fan speeds are NOT strictly bounded by min/max values - these are guidelines only
+- Fan speeds are NOT strictly bounded by min/max values (these are guidelines only)
 - Independent fan control is fully supported on Apple Silicon
 
 **Sleep/Wake Behavior:**
@@ -351,7 +355,7 @@ The following measurements were collected on M4 Max hardware (2 fans, reported m
 #### Command Timing
 
 | Transition Type | Command Time | Notes |
-|-----------------|--------------|-------|
+| --------------- | ------------ | ----- |
 | Auto → Manual (first fan) | ~5-6.5s | Includes `Ftst=1` unlock + mode retry loop |
 | Auto → Manual (subsequent fan) | ~20ms | `Ftst` already set, just set mode |
 | Manual → Manual (RPM change) | ~20ms | No mode change needed |
@@ -361,7 +365,7 @@ The following measurements were collected on M4 Max hardware (2 fans, reported m
 #### RPM Ramp Timing
 
 | RPM Delta | Time to Stable | Notes |
-|-----------|----------------|-------|
+| --------- | -------------- | ----- |
 | 0 → 5000 | ~4s | Initial spin-up from stopped |
 | 5000 → 7000 | ~4s | Within operating range |
 | 7000 → 0 | ~1s | Spin-down is faster than spin-up |
@@ -372,7 +376,7 @@ The following measurements were collected on M4 Max hardware (2 fans, reported m
 Each row shows a tested transition with measured results.
 
 | From State | Action | To State | Cmd (ms) | Stable (ms) | Side Effects |
-|------------|--------|----------|----------|-------------|--------------|
+| ---------- | ------ | -------- | -------- | ----------- | ------------ |
 | F0: A@0, F1: A@0 | set 0 5000 | F0: M@5000, F1: A@2500 | 5252 | 8000 | F1 wakes to auto min |
 | F0: M@5000, F1: A@2500 | set 0 7000 | F0: M@7000, F1: A@2500 | 22 | 4500 | - |
 | F0: M@7000, F1: A@2500 | auto 0 | F0: A@0, F1: A@0 | 25 | 4500 | System mode restored |
@@ -385,7 +389,7 @@ Each row shows a tested transition with measured results.
 
 #### State Diagram
 
-```
+```text
                               ┌─────────────────────────────────┐
                               │         SYSTEM IDLE             │
                               │   F0: Auto @ 0, F1: Auto @ 0    │
@@ -422,7 +426,7 @@ Each row shows a tested transition with measured results.
 #### Edge Case Behavior
 
 | Requested | Reported Limits | Actual Result | Notes |
-|-----------|-----------------|---------------|-------|
+| --------- | --------------- | ------------- | ----- |
 | 0 RPM | min=2317 | 0 RPM | Fan stops completely |
 | 1000 RPM | min=2317 | ~1000 RPM | Below "min" works |
 | 10000 RPM | max=7826 | ~8560 RPM | Hardware caps above reported max |
@@ -554,7 +558,7 @@ The following claims require additional verification, and the methodologies used
 ### Hardware Compatibility
 
 | Item | Status | Notes |
-|------|--------|-------|
+| ---- | ------ | ----- |
 | M5+ chip compatibility | **Untested** | Unlock mechanism and SMC key schema assumed consistent but not verified |
 | M1/M2 generation testing | **Partial** | Decompiled code suggests consistency, but runtime testing was primarily on M4 Max |
 | T2-equipped Macs | **Untested** | Mode 2 behavior referenced in prior work but not verified |
@@ -563,7 +567,7 @@ The following claims require additional verification, and the methodologies used
 ### Inferred Behaviors
 
 | Item | Status | Evidence |
-|------|--------|----------|
+| ---- | ------ | -------- |
 | Firmware fallback on daemon kill | **Not verified** | Inferred from `_claimSystemShutdownEvents` and `sysState.ShutdownSystem` in decompiled `AppleSMC`. Not tested by killing `thermalmonitord` under thermal load. |
 | Sleep/wake `Ftst` reset | **Inferred** | Decompiled sleep handler analysis suggests firmware resets `Ftst`, not the daemon. Runtime testing confirms control loss on wake, but firmware-level reset not directly observed. |
 | Polling intervals (4000ms/250ms) | **Inferred** | Values extracted from decompiled `thermalmonitord`. Actual timing may vary by macOS version or hardware. |
@@ -574,7 +578,7 @@ The following claims require additional verification, and the methodologies used
 Decompiled code analysis has identified potential alternative approaches that may provide cleaner or more persistent control than the `Ftst` unlock mechanism:
 
 | Approach | Status | Notes |
-|----------|--------|-------|
+| -------- | ------ | ----- |
 | Plist-based thermal targets | **Untested** | `thermalmonitord` reads `/Library/Preferences/SystemConfiguration/com.apple.cltm.plist` for `LifetimeServoDieTempTarget`. Setting a low temperature may cause fans to maximize. Would survive reboots. |
 | Direct IOKit property writes | **Untested** | Properties like `LifetimeServoDieTemperatureTargetPropertyKey` (M1/M2) and `LifetimeServoFastDieTemperatureTarget` (M3/M4) written to `AppleCLPC` or `AppleDieTempController`. May communicate directly with hardware controllers. |
 | Alternative diagnostic keys | **Partial** | `TG0B`, `TG0V`, `zETM`, `zEAR`, `TGraph` identified but not tested for fan control. `Ftst` appears to be the primary diagnostic override. |
@@ -584,7 +588,7 @@ Decompiled code analysis has identified potential alternative approaches that ma
 The same research methodologies could reveal other SMC-controllable parameters:
 
 | Area | Potential |
-|------|-----------|
+| ---- | --------- |
 | Power Management | CPU/GPU power limits, TDP controls |
 | Thermal Sensors | Access to temperature sensors beyond standard APIs |
 | Performance States | Direct control over P-states, frequency scaling |
@@ -594,11 +598,57 @@ The same research methodologies could reveal other SMC-controllable parameters:
 ### Edge Cases
 
 | Item | Status | Notes |
-|------|--------|-------|
+| ---- | ------ | ----- |
 | `0x87` error on `F0Tg` writes | **Observed** | Value sometimes applied despite error response. Root cause unclear. |
 | Boot arguments (`smc-debug`, `smc-logsize`) | **Untested** | Identified in decompiled code but not tested for output |
 | Helper crash with `Ftst=1` active | **Untested** | Potential thermal management gap if helper crashes without resetting `Ftst` |
 | Fan coupling on M3/M4 | **Partial** | Community reports suggest synchronized fan behavior on some models. Not consistently reproduced. |
+
+## Takeaways
+
+This section offers conjectures about *why* Apple designed the thermal management system this way, based on the observed behaviors.
+
+### Why is Manual Control Blocked by Default?
+
+**System Safety**: Apple likely assumes users cannot be trusted to manage thermals correctly. Setting fans too low under load risks thermal damage; setting them too high constantly causes unnecessary wear and noise. By enforcing Mode 3 (System Mode), the system guarantees safe operation regardless of user actions.
+
+**Liability**: Making manual control difficult creates a clear boundary. If you bypass the daemon using `Ftst`, you're explicitly entering "diagnostic mode" which is territory Apple never intended for end users. This shields Apple from warranty claims related to thermal damage.
+
+### Why Does the Diagnostic Flag (`Ftst`) Exist at All?
+
+**Manufacturing/QA**: Apple's engineers and manufacturing lines need to verify fan hardware, test thermal behavior, and diagnose issues. The `Ftst` flag is an escape hatch for these purposes.
+
+**Firmware Fallback**: The `RTKit` firmware layer almost certainly has independent thermal protection (emergency throttling, shutdown) that operates *regardless* of `Ftst` state. This is why Apple can afford to expose a diagnostic override: the hardware can still save itself from catastrophic failure even if `thermalmonitord` is bypassed.
+
+### Why Does Sleep/Wake Reset `Ftst`?
+
+**Unknown State**: After wake, the system doesn't know the thermal context (lid closed? docked? external display?). Resetting to system control is the safe default. This also prevents a forgotten manual override from persisting across sessions.
+
+### Why Aggressive Daemon Polling (250ms Under Load)?
+
+**Crash Recovery**: If a controlling app crashes while `Ftst=1`, the system needs to recover quickly. The 250ms polling under thermal load ensures the daemon can reclaim control before temperatures become dangerous.
+
+**Thermal Responsiveness**: Under high load, thermal conditions change rapidly. Faster polling allows the system to respond to sudden temperature spikes, even during mode transitions.
+
+### Why Are Min/Max Values "Guidelines" Not Limits?
+
+**Headroom for the System**: The reported min/max values appear to be *thermal management thresholds*, not hardware limits. The system reserves the ability to push fans beyond reported max (~8560 vs 7826 reported) for emergency cooling, and below reported min for silence during idle.
+
+**User Safety vs. System Flexibility**: Users are given "safe" guidelines, while the system retains full range for its own use.
+
+### Why Not Block `Ftst` Entirely?
+
+Apple could lock down the `Ftst` flag at the kernel or firmware level and require an Apple-signed factory tool, validate entitlements, or simply not expose it to userspace at all. They don't, which suggests:
+
+**Cost vs. Benefit**: Implementing kernel-level validation for a diagnostic flag adds complexity. The firmware fallback (independent thermal protection) already prevents catastrophic outcomes. The effort to lock it down may not be worth it when the risk is manageable.
+
+**Flexibility for Edge Cases**: Developers, researchers, and power users occasionally have legitimate needs (thermal testing, custom cooling solutions, accessibility). A hard block would force workarounds or jailbreaks. The current "difficult but not impossible" approach may be intentional.
+
+**Legacy Compatibility**: The SMC interface predates Apple Silicon. Adding entitlement checks could break existing internal tools. Notably, Apple only further restricted/obscured *writes* on Apple Silicon while reads remain open. This asymmetry hints that monitoring/diagnostic tools (read-only) matter more for backwards compatibility than control tools (read-write).
+
+### Why Require Developer ID Signing?
+
+**Gatekeeping**: By requiring a paid Developer Program membership for `SMJobBless`, Apple limits who can install privileged helpers. This isn't purely technical since self-signed certificates could theoretically work. It's a policy decision to keep low-level hardware access out of reach for casual users.
 
 ## References
 
@@ -615,7 +665,3 @@ The same research methodologies could reveal other SMC-controllable parameters:
 [^11]: Jonathan Levin, "Mac OS X and iOS Internals, Volume I: User Space" - System daemons and thermal management architecture
 [^12]: [Keep your Mac laptop within acceptable operating temperatures](https://support.apple.com/en-us/102336) - Mac thermal management and fan behavior
 [^13]: [IOKit Fundamentals](https://developer.apple.com/library/archive/documentation/DeviceDrivers/Conceptual/IOKitFundamentals/Introduction/Introduction.html) - Apple's device driver and hardware access framework
-
-## License
-
-Educational and research use only. See [LICENSE.md](LICENSE.md) for full terms and legal notice.
