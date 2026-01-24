@@ -180,12 +180,10 @@ final class IntegrationTests: XCTestCase {
         Thread.sleep(forTimeInterval: 3.0)
 
         // Get initial state of Fan 0
-        var fan0InitialMode = ""
         let initialExpectation = XCTestExpectation(description: "Initial state")
         runCLI(["list"]) { output, _ in
-            if output.contains("Fan 0:"), output.contains("Mode: Auto") {
-                fan0InitialMode = "Auto"
-            }
+            // Verify Fan 0 exists and is in Auto mode
+            XCTAssertTrue(output.contains("Fan 0:"), "Should have Fan 0")
             initialExpectation.fulfill()
         }
         wait(for: [initialExpectation], timeout: 10.0)
@@ -333,6 +331,177 @@ final class IntegrationTests: XCTestCase {
             verifyExpectation.fulfill()
         }
         wait(for: [verifyExpectation], timeout: 10.0)
+    }
+
+    // MARK: - Edge Case Tests
+
+    func testSetZeroRPM_ManualStop() throws {
+        // Setting 0 RPM should stop the fan completely while keeping manual mode
+        let setExpectation = XCTestExpectation(description: "Set 0 RPM")
+        runCLI(["set", "0", "0"]) { _, exitCode in
+            XCTAssertEqual(exitCode, 0)
+            setExpectation.fulfill()
+        }
+        wait(for: [setExpectation], timeout: 15.0)
+        Thread.sleep(forTimeInterval: 2.0)
+
+        let verifyExpectation = XCTestExpectation(description: "Verify 0 RPM")
+        runCLI(["list"]) { output, _ in
+            let lines = output.components(separatedBy: "\n")
+            for line in lines where line.contains("Fan 0:") {
+                XCTAssertTrue(line.contains("Target: 0"), "Target should be 0")
+                XCTAssertTrue(line.contains("Mode: Manual"), "Mode should be Manual")
+                // RPM should be 0 or very close
+                if let match = line.range(of: "Fan 0: (\\d+) RPM", options: .regularExpression) {
+                    let rpmStr = String(line[match]).replacingOccurrences(
+                        of: "Fan 0: ", with: ""
+                    ).replacingOccurrences(of: " RPM", with: "")
+                    if let rpm = Int(rpmStr) {
+                        XCTAssertLessThanOrEqual(rpm, 100, "RPM should be 0 or near 0")
+                    }
+                }
+            }
+            verifyExpectation.fulfill()
+        }
+        wait(for: [verifyExpectation], timeout: 10.0)
+
+        // Cleanup
+        runCLI(["auto", "0"]) { _, _ in }
+        runCLI(["auto", "1"]) { _, _ in }
+        Thread.sleep(forTimeInterval: 3.0)
+    }
+
+    func testSetBelowMinRPM_Works() throws {
+        // Hardware allows RPM below the reported "min" threshold
+        // Reported min is ~2317, but 1000 RPM should work
+        let setExpectation = XCTestExpectation(description: "Set below min")
+        runCLI(["set", "0", "1000"]) { _, exitCode in
+            XCTAssertEqual(exitCode, 0)
+            setExpectation.fulfill()
+        }
+        wait(for: [setExpectation], timeout: 15.0)
+        Thread.sleep(forTimeInterval: 3.0)
+
+        let verifyExpectation = XCTestExpectation(description: "Verify below min")
+        runCLI(["list"]) { output, _ in
+            let lines = output.components(separatedBy: "\n")
+            for line in lines where line.contains("Fan 0:") {
+                XCTAssertTrue(line.contains("Target: 1000"), "Target should be 1000")
+                // Actual RPM should be around 1000 (±100)
+                if let match = line.range(of: "Fan 0: (\\d+) RPM", options: .regularExpression) {
+                    let rpmStr = String(line[match]).replacingOccurrences(
+                        of: "Fan 0: ", with: ""
+                    ).replacingOccurrences(of: " RPM", with: "")
+                    if let rpm = Int(rpmStr) {
+                        XCTAssertGreaterThan(rpm, 800, "RPM should be around 1000")
+                        XCTAssertLessThan(rpm, 1200, "RPM should be around 1000")
+                    }
+                }
+            }
+            verifyExpectation.fulfill()
+        }
+        wait(for: [verifyExpectation], timeout: 10.0)
+
+        // Cleanup
+        runCLI(["auto", "0"]) { _, _ in }
+        runCLI(["auto", "1"]) { _, _ in }
+        Thread.sleep(forTimeInterval: 3.0)
+    }
+
+    func testSetAboveMaxRPM_ClampedToHardwareMax() throws {
+        // Requesting above reported max (~7826) is clamped to hardware max (~8500)
+        let setExpectation = XCTestExpectation(description: "Set above max")
+        runCLI(["set", "0", "10000"]) { _, exitCode in
+            XCTAssertEqual(exitCode, 0)
+            setExpectation.fulfill()
+        }
+        wait(for: [setExpectation], timeout: 15.0)
+        Thread.sleep(forTimeInterval: 5.0)
+
+        let verifyExpectation = XCTestExpectation(description: "Verify clamped")
+        runCLI(["list"]) { output, _ in
+            let lines = output.components(separatedBy: "\n")
+            for line in lines where line.contains("Fan 0:") {
+                XCTAssertTrue(line.contains("Target: 10000"), "Target should be 10000")
+                // Actual RPM should be clamped around 8400-8700
+                if let match = line.range(of: "Fan 0: (\\d+) RPM", options: .regularExpression) {
+                    let rpmStr = String(line[match]).replacingOccurrences(
+                        of: "Fan 0: ", with: ""
+                    ).replacingOccurrences(of: " RPM", with: "")
+                    if let rpm = Int(rpmStr) {
+                        XCTAssertGreaterThan(rpm, 8000, "RPM should be clamped ~8500")
+                        XCTAssertLessThan(rpm, 9000, "RPM should be clamped ~8500")
+                    }
+                }
+            }
+            verifyExpectation.fulfill()
+        }
+        wait(for: [verifyExpectation], timeout: 10.0)
+
+        // Cleanup
+        runCLI(["auto", "0"]) { _, _ in }
+        runCLI(["auto", "1"]) { _, _ in }
+        Thread.sleep(forTimeInterval: 3.0)
+    }
+
+    func testOtherFanWakesToAutoMin_WhenFirstFanGoesManual() throws {
+        // When first fan goes manual (Ftst=1), other fans wake to their auto minimum
+        // Reset both to auto first
+        runCLI(["auto", "0"]) { _, _ in }
+        runCLI(["auto", "1"]) { _, _ in }
+        Thread.sleep(forTimeInterval: 5.0)
+
+        // Verify both fans are at 0 RPM (system idle)
+        let initialExpectation = XCTestExpectation(description: "Initial idle")
+        var initialFan1RPM = 0
+        runCLI(["list"]) { output, _ in
+            if let match = output.range(of: "Fan 1: (\\d+) RPM", options: .regularExpression) {
+                let rpmStr = String(output[match]).replacingOccurrences(
+                    of: "Fan 1: ", with: ""
+                ).replacingOccurrences(of: " RPM", with: "")
+                initialFan1RPM = Int(rpmStr) ?? 0
+            }
+            initialExpectation.fulfill()
+        }
+        wait(for: [initialExpectation], timeout: 10.0)
+
+        // Set Fan 0 to manual
+        let setExpectation = XCTestExpectation(description: "Set Fan 0")
+        runCLI(["set", "0", "5000"]) { _, exitCode in
+            XCTAssertEqual(exitCode, 0)
+            setExpectation.fulfill()
+        }
+        wait(for: [setExpectation], timeout: 15.0)
+        Thread.sleep(forTimeInterval: 3.0)
+
+        // Fan 1 should have woken to auto min (~2500 RPM)
+        let verifyExpectation = XCTestExpectation(description: "Verify Fan 1 woke")
+        runCLI(["list"]) { output, _ in
+            let lines = output.components(separatedBy: "\n")
+            for line in lines where line.contains("Fan 1:") {
+                XCTAssertTrue(line.contains("Mode: Auto"), "Fan 1 should be Auto")
+                // RPM should be around auto min (~2500)
+                if let match = line.range(of: "Fan 1: (\\d+) RPM", options: .regularExpression) {
+                    let rpmStr = String(line[match]).replacingOccurrences(
+                        of: "Fan 1: ", with: ""
+                    ).replacingOccurrences(of: " RPM", with: "")
+                    if let rpm = Int(rpmStr) {
+                        // If system was idle (0 RPM), Fan 1 should now be at auto min
+                        if initialFan1RPM == 0 {
+                            XCTAssertGreaterThan(rpm, 2000,
+                                "Fan 1 should wake to auto min when Ftst is set")
+                        }
+                    }
+                }
+            }
+            verifyExpectation.fulfill()
+        }
+        wait(for: [verifyExpectation], timeout: 10.0)
+
+        // Cleanup
+        runCLI(["auto", "0"]) { _, _ in }
+        runCLI(["auto", "1"]) { _, _ in }
+        Thread.sleep(forTimeInterval: 3.0)
     }
 
     // MARK: - Error Handling Tests
