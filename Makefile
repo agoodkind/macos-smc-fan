@@ -24,7 +24,7 @@ SPM_BUILD_DIR = .build/release
 # SPM environment
 SPM_ENV = HELPER_BUNDLE_ID=$(HELPER_ID)
 
-.PHONY: all clean install test test-e2e help
+.PHONY: all clean install test test-e2e help format lint
 
 all: $(PRODUCTS_DIR)/smcfan $(APP_MACOS)/SMCFanInstaller $(APP_RESOURCES)/$(HELPER_ID) $(APP_CONTENTS)/Info.plist
 
@@ -166,6 +166,14 @@ test-e2e: all
 	@echo ""
 	@echo "=== E2E Test Complete ==="
 
+# Format code with swift-format
+format:
+	swift-format format --in-place --recursive Sources/ Tests/
+
+# Lint code with swift-format
+lint:
+	swift-format lint --recursive Sources/ Tests/
+
 # Clean
 clean:
 	rm -rf $(GENERATED_DIR) $(PRODUCTS_DIR) .build
@@ -179,4 +187,6 @@ help:
 	@echo "  install   - Install to /Applications"
 	@echo "  test      - Run unit tests"
 	@echo "  test-e2e  - End-to-end test"
+	@echo "  format    - Format code with swift-format"
+	@echo "  lint      - Lint code with swift-format"
 	@echo "  clean     - Remove build artifacts"

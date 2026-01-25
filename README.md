@@ -4,9 +4,11 @@
 
 ## Motivation
 
-Prior to this research, no public documentation existed for manual fan **control** or persistent writes (e.g., manipulating fan speed) on Apple Silicon. While **reading** sensor data was documented [^6][^9], no prior work documented a mechanism to transition from system-managed to user-managed fan control.
+Prior to this research, no public documentation existed for manual fan **control** on Apple Silicon **within macOS**. While reading sensor data was documented [^6][^14], and the Asahi Linux project implemented fan control for Linux on Apple Silicon [^14][^15], no prior work documented how to achieve this on macOS. On macOS, Apple's `thermalmonitord` daemon actively blocks direct SMC writes.
 
-This project documents the **research process**, the discovered **diagnostic mode transition**, and provides a working example implementation. The research reveals how `thermalmonitord` enforces a "System Mode" and the specific SMC key sequence required to enable manual control.
+The Asahi Linux kernel driver (`macsmc-hwmon`) provides fan control via standard hwmon interfaces when running Linux, but this requires booting into Linux and uses kernel-level access without an active thermal management daemon blocking writes. On macOS, the challenge is fundamentally different: `thermalmonitord` enforces "System Mode" (mode 3) and firmware rejects manual mode changes unless a specific unlock sequence is applied.
+
+This project documents the **macOS-specific research process**, the discovered **diagnostic mode transition** (`Ftst` unlock), and provides a working example implementation. The research reveals how `thermalmonitord` enforces System Mode and the specific SMC key sequence required to enable manual control from userspace on macOS.
 
 Beyond fan control, this work demonstrates **SMC research methodologies** that could expose other controllable system parameters.
 
@@ -66,7 +68,7 @@ This hybrid approach (traditional binary analysis tools combined with LLM analys
 - **SoC (System-on-Chip)**: Apple Silicon (M1-M5+) integrates CPU, GPU, Neural Engine, memory controllers, and management components into a single chip, unlike earlier Macs which had separate components. See Apple's documentation on boot security for more on SoC architecture [^3].
 - **RTKit**: Apple's embedded firmware backend that manages the integrated SMC on Apple Silicon [^6], replacing the older ACPI-based interface used previously.
 - **Daemon**: A background system process (e.g., `thermalmonitord`) that runs with elevated privileges and coordinates system behavior. It monitors thermal pressure [^1] and publishes state changes [^2].
-- **IOKit**: Apple's macOS kernel framework for communicating with hardware devices from userspace. It provides a structured way to discover, access, and control device drivers without requiring kernel code. In this project, IOKit is used to open a connection to the `AppleSMC` driver and issue read/write commands to SMC keys [^13].
+- **`IOKit`**: Apple's macOS kernel framework for communicating with hardware devices from userspace. It provides a structured way to discover, access, and control device drivers without requiring kernel code. In this project, `IOKit` is used to open a connection to the `AppleSMC` driver and issue read/write commands to SMC keys [^13].
 
 ### Evolution of macOS SMC-based Fan Control
 
@@ -83,6 +85,8 @@ The T2 chip added a security layer. SMC functions moved into this separate proce
 #### M1 and M2 Generation
 
 With Apple Silicon, Apple integrated SMC functionality into the main chip itself [^6]. Investigation revealed a fundamental architectural shift: instead of the SMC independently managing fans, a background system process called `thermalmonitord` [^10][^11] now coordinates thermal policy. Runtime tracing and decompiled code analysis confirmed this process actively prevents direct fan control by enforcing a locked state that blocks manual mode changes.
+
+**Note on Asahi Linux**: The Asahi Linux project developed a kernel driver (`macsmc-hwmon`) [^14][^15] that provides fan control when running Linux on Apple Silicon. Their approach differs fundamentally: Linux has no `thermalmonitord` equivalent blocking writes, so direct SMC access via kernel driver is sufficient. They expose fan control through standard hwmon sysfs interfaces with an "unsafe" module parameter (`fan_control=1`). This work documents the SMC key schema and data formats but does not address the macOS-specific challenge of bypassing daemon enforcement.
 
 **Key Changes from Legacy:**
 
@@ -114,7 +118,9 @@ The unlock mechanism and fan control behavior have not been tested on M5 chips. 
 
 ### SMC Keys
 
-Prior research [^7][^8][^9] found the following keys, which were verified for Apple Silicon through `dtrace` tracing of `thermalmonitord` and `AppleSMC` kernel extensions, complemented by IDA Pro binary analysis.
+Prior research [^7][^8][^9] found the following keys, which were verified for Apple Silicon [^14] through `dtrace` tracing of `thermalmonitord` and `AppleSMC` kernel extensions, complemented by IDA Pro binary analysis.
+
+> **Key format**: `%d` is a placeholder for the fan index (0-based). For example, `F0Ac` is fan 0's actual RPM, `F1Tg` is fan 1's target RPM.
 
 | Key | Type | Description |
 | --- | --- | --- |
@@ -135,7 +141,7 @@ Prior research [^7][^8][^9] found the following keys, which were verified for Ap
 **Data Formats:**
 
 - **Legacy (FPE2) Format**: 2-byte `fpe2` fixed-point (14.2 format, big-endian). The top 14 bits are integer, bottom 2 bits are fractional (divide raw value by 4) [^5].
-- **Apple Silicon**: 4-byte IEEE 754 float (little-endian) [^6].
+- **Apple Silicon**: 4-byte IEEE 754 float (little-endian) [^6][^14].
 
 Cross-platform code must detect and handle both formats [^5][^6]. See [Architecture & Research Insights](#architecture--research-insights) for more on how these keys are managed on Apple Silicon.
 
@@ -275,14 +281,22 @@ The daemon runs continuously and reclaims control when the unlock mechanism is r
 
 **SMC Errors (returned in `result` field):**
 
+These codes are from VirtualSMC SDK[^16], the authoritative source for Apple SMC protocol documentation.
+
 | Code | Name | Description |
 | --- | --- | --- |
-| `0x00` | Success | Operation completed |
-| `0x82` | `kSMCBadCommand` | Firmware rejects write. Observed when attempting to write `F%dMd` keys while system is in Mode 3. Analysis of decompiled `AppleSMC.kext` shows this error originates from `RTKit` firmware communication. |
-| `0x84` | `kSMCNotWritable` | Key is read-only |
-| `0x85` | `kSMCNotReadable` | Key is write-only |
-| `0x86` | `kSMCKeyNotFound` | Key does not exist |
-| `0x87` | `kSMCBadFuncParameter` | Invalid parameter (may still apply value) |
+| `0x00` | `SmcSuccess` | Operation completed |
+| `0x01` | `SmcError` | Generic error |
+| `0x80` | `SmcCommCollision` | Communication collision |
+| `0x81` | `SmcSpuriousData` | Unexpected data received |
+| `0x82` | `SmcBadCommand` | Firmware rejects command. Observed when attempting to write `F%dMd` keys while system is in Mode 3. Analysis of decompiled `AppleSMC.kext` shows this error originates from `RTKit` firmware communication. |
+| `0x83` | `SmcBadParameter` | Invalid parameter value |
+| `0x84` | `SmcNotFound` | Key does not exist |
+| `0x85` | `SmcNotReadable` | Key is write-only |
+| `0x86` | `SmcNotWritable` | Key is read-only |
+| `0x87` | `SmcKeySizeMismatch` | Data size mismatch (may still apply value) |
+| `0x88` | `SmcFramingError` | Protocol framing error |
+| `0x89` | `SmcBadArgumentError` | Bad argument to SMC function |
 
 Note: `0x87` errors on `F0Tg` writes sometimes succeed. The value is applied despite the error response.
 
@@ -660,8 +674,11 @@ Apple could lock down the `Ftst` flag at the kernel or firmware level and requir
 [^6]: [Asahi Linux SMC Documentation](https://asahilinux.org/docs/hw/soc/smc/) - Apple Silicon SMC key formats
 [^7]: [SMC Sensor Keys Reference](https://www.marukka.ch/mac/mac-smc-sensor-keys) - Comprehensive SMC key catalog
 [^8]: [smcFanControl Repository](https://github.com/hholtmann/smcFanControl) - Open-source fan control tool
-[^9]: [Linux Kernel applesmc Driver](https://github.com/torvalds/linux/blob/master/drivers/hwmon/applesmc.c) - Authoritative source for SMC key schema and protocol
+[^9]: [Linux Kernel applesmc Driver](https://github.com/torvalds/linux/blob/master/drivers/hwmon/applesmc.c) - Intel Mac SMC driver; authoritative source for legacy SMC key schema
 [^10]: [Thermals and macOS - Dave MacLachlan](https://dmaclach.medium.com/thermals-and-macos-c0db81062889) - Thermal monitoring APIs and `thermald`/`thermalmonitord` behavior on macOS
 [^11]: Jonathan Levin, "Mac OS X and iOS Internals, Volume I: User Space" - System daemons and thermal management architecture
 [^12]: [Keep your Mac laptop within acceptable operating temperatures](https://support.apple.com/en-us/102336) - Mac thermal management and fan behavior
 [^13]: [IOKit Fundamentals](https://developer.apple.com/library/archive/documentation/DeviceDrivers/Conceptual/IOKitFundamentals/Introduction/Introduction.html) - Apple's device driver and hardware access framework
+[^14]: [Linux Kernel macsmc-hwmon Driver](https://github.com/torvalds/linux/blob/master/drivers/hwmon/macsmc-hwmon.c) - Apple Silicon SMC hwmon driver (Asahi Linux); provides fan control on Linux via hwmon interfaces
+[^15]: [Asahi Linux Progress Report: Linux 6.18](https://asahilinux.org/2025/12/progress-report-6-18/) - Documents upstreaming of SMC hwmon driver to mainline Linux
+[^16]: [VirtualSMC SDK `AppleSmc.h`](https://github.com/acidanthera/VirtualSMC/blob/master/VirtualSMCSDK/AppleSmc.h) - SMC result codes, commands, and protocol constants derived from reverse engineering Apple's SMC
