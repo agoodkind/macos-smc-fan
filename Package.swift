@@ -1,4 +1,12 @@
 // swift-tools-version: 5.9
+//
+//  Package.swift
+//  SMCFan
+//
+//  Created by Alex Goodkind <alex@goodkind.io> on 2026-01-18.
+//  Copyright © 2026
+//
+
 import PackageDescription
 
 let package = Package(
