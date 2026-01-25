@@ -1,8 +1,0 @@
-/* Auto-generated from config.mk - DO NOT EDIT */
-#ifndef SMCFAN_CONFIG_H
-#define SMCFAN_CONFIG_H
-
-#define HELPER_ID "@@HELPER_ID@@"
-#define INSTALLER_ID "@@INSTALLER_ID@@"
-
-#endif // SMCFAN_CONFIG_H

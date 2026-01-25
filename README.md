@@ -23,7 +23,7 @@ Beyond fan control, this work demonstrates **SMC research methodologies** that c
 
 ## License
 
-Educational and research use only. See [LICENSE.md](LICENSE.md) for full terms and legal notice.
+MIT License. Research findings and code may be freely used in independent implementations. See [LICENSE.md](LICENSE.md) for full terms and legal notice.
 
 ## Methodology
 
