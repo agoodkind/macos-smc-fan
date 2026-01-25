@@ -10,10 +10,10 @@ import Foundation
 
 @main
 struct SMCFanHelperMain {
-    static func main() {
-        autoreleasepool {
-            let helper = SMCFanHelper()
-            helper.start()
-        }
+  static func main() {
+    autoreleasepool {
+      let helper = SMCFanHelper()
+      helper.start()
     }
+  }
 }
