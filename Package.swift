@@ -10,17 +10,6 @@ let package = Package(
         .executable(name: "installer", targets: ["installer"]),
     ],
     targets: [
-        // Low-level C library for SMC hardware access
-        .target(
-            name: "libsmc",
-            path: "Sources/libsmc",
-            exclude: [],
-            publicHeadersPath: ".",
-            cSettings: [
-                .headerSearchPath("."),
-            ]
-        ),
-
         // Common Swift protocol and types
         .target(
             name: "SMCCommon",
@@ -56,6 +45,5 @@ let package = Package(
             dependencies: [],
             path: "Tests/SMCFanTests"
         ),
-    ],
-    cLanguageStandard: .c11
+    ]
 )

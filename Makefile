@@ -74,20 +74,14 @@ HELPER_SOURCES = $(wildcard Sources/smcfanhelper/*.swift) Sources/common/Config.
 
 $(APP_RESOURCES)/$(HELPER_ID): $(HELPER_SOURCES) $(GENERATED_DIR)/Config.generated.swift $(GENERATED_DIR)/helper-info.plist $(GENERATED_DIR)/helper-launchd.plist spm-build
 	@mkdir -p $(APP_RESOURCES)
-	# Build C library
-	@mkdir -p $(GENERATED_DIR)
-	clang -c -O2 -Wall Sources/libsmc/smc.c -o $(GENERATED_DIR)/smc.o
-	# Build helper with swiftc to enable plist embedding
+	# Build helper with swiftc to enable plist embedding (pure Swift - no C dependency)
 	swiftc -O -parse-as-library \
 		-module-name smcfanhelper \
 		-D GENERATED_CONFIG -D DIRECT_BUILD \
-		-import-objc-header Include/SMCFan-Bridging-Header.h \
-		-ISources/libsmc \
 		Sources/common/Config.swift \
 		Sources/common/SMCProtocol.swift \
 		$(GENERATED_DIR)/Config.generated.swift \
 		$(wildcard Sources/smcfanhelper/*.swift) \
-		$(GENERATED_DIR)/smc.o \
 		-framework Foundation -framework IOKit -framework CoreFoundation \
 		-Xlinker -sectcreate -Xlinker __TEXT -Xlinker __info_plist -Xlinker $(GENERATED_DIR)/helper-info.plist \
 		-Xlinker -sectcreate -Xlinker __TEXT -Xlinker __launchd_plist -Xlinker $(GENERATED_DIR)/helper-launchd.plist \
