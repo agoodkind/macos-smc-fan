@@ -6,7 +6,7 @@
 
 Prior to this research, no public documentation existed for manual fan **control** on Apple Silicon **within macOS**. While reading sensor data was documented [^6][^14], and the Asahi Linux project implemented fan control for Linux on Apple Silicon [^14][^15], no prior work documented how to achieve this on macOS. On macOS, Apple's `thermalmonitord` daemon actively blocks direct SMC writes.
 
-The Asahi Linux kernel driver (`macsmc-hwmon`) provides fan control via standard hwmon interfaces when running Linux, but this requires booting into Linux and uses kernel-level access without an active thermal management daemon blocking writes. On macOS, the challenge is fundamentally different: `thermalmonitord` enforces "System Mode" (mode 3) and firmware rejects manual mode changes unless a specific unlock sequence is applied.
+The Asahi Linux kernel driver (`macsmc-hwmon`) provides fan control via standard `hwmon` interfaces when running Linux, but this requires booting into Linux and uses kernel-level access without an active thermal management daemon blocking writes. On macOS, the challenge is fundamentally different: `thermalmonitord` enforces "System Mode" (mode 3) and firmware rejects manual mode changes unless a specific unlock sequence is applied.
 
 This project documents the **macOS-specific research process**, the discovered **diagnostic mode transition** (`Ftst` unlock), and provides a working example implementation. The research reveals how `thermalmonitord` enforces System Mode and the specific SMC key sequence required to enable manual control from userspace on macOS.
 
@@ -46,7 +46,7 @@ This project documents the analysis of Apple Silicon's thermal management system
    - SMC key read/write handlers and their error conditions
    - The `Ftst` (Force Test) flag's role in thermal management state transitions
    - Polling intervals and control reclaim mechanisms in `thermalmonitord`
-   - Interactions between `thermalmonitord`, `AppleCLPC`, and the RTKit firmware layer
+   - Interactions between `thermalmonitord`, `AppleCLPC`, and the `RTKit` firmware layer
 4. **Experimental Validation**: Confirmed LLM-identified patterns through runtime testing, including timing the unlock sequence, observing mode transitions, and verifying error conditions
 
 ### Why LLMs?
@@ -66,7 +66,7 @@ This hybrid approach (traditional binary analysis tools combined with LLM analys
 
 - **SMC (System Management Controller)**: A microcontroller (Legacy/T2) or integrated firmware component (Apple Silicon) that manages low-level hardware: thermal sensors, fan speeds, power states, and other system functions [^7]. On legacy hardware, it's discrete; on Apple Silicon, it's part of the SoC.
 - **SoC (System-on-Chip)**: Apple Silicon (M1-M5+) integrates CPU, GPU, Neural Engine, memory controllers, and management components into a single chip, unlike earlier Macs which had separate components. See Apple's documentation on boot security for more on SoC architecture [^3].
-- **RTKit**: Apple's embedded firmware backend that manages the integrated SMC on Apple Silicon [^6], replacing the older ACPI-based interface used previously.
+- **`RTKit`**: Apple's embedded firmware backend that manages the integrated SMC on Apple Silicon [^6], replacing the older ACPI-based interface used previously.
 - **Daemon**: A background system process (e.g., `thermalmonitord`) that runs with elevated privileges and coordinates system behavior. It monitors thermal pressure [^1] and publishes state changes [^2].
 - **`IOKit`**: Apple's macOS kernel framework for communicating with hardware devices from userspace. It provides a structured way to discover, access, and control device drivers without requiring kernel code. In this project, `IOKit` is used to open a connection to the `AppleSMC` driver and issue read/write commands to SMC keys [^13].
 
