@@ -54,11 +54,11 @@ func smcUnlockFanControl(
   maxRetries: Int = 100,
   timeout: TimeInterval = 10.0
 ) -> kern_return_t {
-  // Write Ftst=1 to enter diagnostic mode
   var result = smcWrite(conn, key: SMCFanKey.forceTest, value: [1], size: 1)
   guard result == kIOReturnSuccess else { return result }
 
-  // Retry writing mode=1 until thermalmonitord yields
+  Thread.sleep(forTimeInterval: 0.5)
+
   let modeKey = SMCFanKey.key(SMCFanKey.mode, fan: fanIndex)
   let deadline = Date().addingTimeInterval(timeout)
 

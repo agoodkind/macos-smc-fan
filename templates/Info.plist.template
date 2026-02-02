@@ -4,16 +4,15 @@
 <dict>
     <key>CFBundleIdentifier</key>
     <string>@@BUNDLE_ID_PREFIX@@.SMCFanHelper</string>
+    <key>CFBundleExecutable</key>
+    <string>SMCFanInstaller</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
     <key>CFBundleName</key>
     <string>SMCFanHelper</string>
     <key>CFBundleVersion</key>
     <string>1.0</string>
     <key>CFBundleShortVersionString</key>
     <string>1.0</string>
-    <key>SMPrivilegedExecutables</key>
-    <dict>
-        <key>@@HELPER_ID@@</key>
-        <string>identifier "@@HELPER_ID@@" and anchor apple generic and certificate leaf[subject.OU] = "@@TEAM_ID@@"</string>
-    </dict>
 </dict>
 </plist>

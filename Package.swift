@@ -17,6 +17,9 @@ let package = Package(
         .executable(name: "smcfanhelper", targets: ["smcfanhelper"]),
         .executable(name: "installer", targets: ["installer"]),
     ],
+    dependencies: [
+        .package(url: "https://github.com/cpisciotta/xcbeautify", from: "3.0.0"),
+    ],
     targets: [
         // Common Swift protocol and types
         .target(
