@@ -224,6 +224,47 @@ class SMCFanHelper: NSObject, NSXPCListenerDelegate, SMCFanHelperProtocol {
 
     NSLog("SMCFanHelper: Set fan %lu to %.0f RPM", fanIndex, rpm)
     reply(true, nil)
+
+    // Background verification: log when fan actually reaches target
+    Task.detached { [weak self] in
+      await self?.verifyFanSpeed(fanIndex: fanIndex, targetRPM: rpm)
+    }
+  }
+
+  /// Polls actual RPM until it reaches target (within 10%) or times out
+  private func verifyFanSpeed(
+    fanIndex: UInt,
+    targetRPM: Float,
+    timeout: TimeInterval = 30.0,
+    interval: TimeInterval = 2.0
+  ) async {
+    let startTime = Date()
+    let tolerance: Float = 0.10
+
+    while Date().timeIntervalSince(startTime) < timeout {
+      guard let actualRPM = readFloat(fanIndex: fanIndex, keyFormat: SMCFanKey.actual) else {
+        return
+      }
+
+      let diff = abs(actualRPM - targetRPM) / max(targetRPM, 1)
+      if diff <= tolerance {
+        let elapsed = Date().timeIntervalSince(startTime)
+        NSLog(
+          "SMCFanHelper: Fan %lu reached %.0f RPM (target: %.0f) after %.1fs",
+          fanIndex, actualRPM, targetRPM, elapsed
+        )
+        return
+      }
+
+      try? await Task.sleep(nanoseconds: UInt64(interval * 1_000_000_000))
+    }
+
+    if let actualRPM = readFloat(fanIndex: fanIndex, keyFormat: SMCFanKey.actual) {
+      NSLog(
+        "SMCFanHelper: Fan %lu at %.0f RPM after 30s (target was %.0f)",
+        fanIndex, actualRPM, targetRPM
+      )
+    }
   }
 
   func smcSetFanAuto(_ fanIndex: UInt, reply: @escaping (Bool, String?) -> Void) {

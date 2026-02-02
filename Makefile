@@ -19,14 +19,24 @@ APP_DIR = $(PRODUCTS_DIR)/SMCFanHelper.app
 APP_CONTENTS = $(APP_DIR)/Contents
 APP_MACOS = $(APP_CONTENTS)/MacOS
 APP_RESOURCES = $(APP_CONTENTS)/Library/LaunchServices
+APP_LAUNCH_DAEMONS = $(APP_CONTENTS)/Library/LaunchDaemons
+APP_RESOURCES_DIR = $(APP_CONTENTS)/Resources
 SPM_BUILD_DIR = .build/release
 
 # SPM environment
 SPM_ENV = HELPER_BUNDLE_ID=$(HELPER_ID)
 
-.PHONY: all clean install test test-e2e help format lint
+.PHONY: all clean install test test-integration test-e2e help format lint
 
-all: $(PRODUCTS_DIR)/smcfan $(APP_MACOS)/SMCFanInstaller $(APP_RESOURCES)/$(HELPER_ID) $(APP_CONTENTS)/Info.plist
+all: $(PRODUCTS_DIR)/smcfan $(APP_MACOS)/SMCFanInstaller $(APP_RESOURCES)/$(HELPER_ID) \
+	$(APP_CONTENTS)/Info.plist $(APP_LAUNCH_DAEMONS)/$(HELPER_ID).plist \
+	$(APP_MACOS)/$(HELPER_ID) sign-app
+
+sign-app: $(APP_MACOS)/SMCFanInstaller $(APP_RESOURCES)/$(HELPER_ID) \
+	$(APP_CONTENTS)/Info.plist \
+	$(APP_LAUNCH_DAEMONS)/$(HELPER_ID).plist \
+	$(APP_MACOS)/$(HELPER_ID)
+	@codesign -s "$(CERT_ID)" -f --deep --timestamp "$(APP_DIR)"
 
 # Generate Swift config file (injected into build)
 $(GENERATED_DIR)/Config.generated.swift: config.mk
@@ -52,30 +62,40 @@ $(GENERATED_DIR)/helper-info.plist: $(TEMPLATES_DIR)/helper-info.plist.template 
 	    $< > $@
 
 # Generate helper launchd.plist
-$(GENERATED_DIR)/helper-launchd.plist: $(TEMPLATES_DIR)/helper-launchd.plist.template config.mk
+$(GENERATED_DIR)/helper-launchd.plist: \
+ $(TEMPLATES_DIR)/helper-launchd.plist.template config.mk
 	@mkdir -p $(GENERATED_DIR)
 	sed -e 's|@@HELPER_ID@@|$(HELPER_ID)|g' $< > $@
+
+# Generate helper daemon.plist (SMAppService, in-bundle)
+$(GENERATED_DIR)/helper-daemon.plist: \
+ $(TEMPLATES_DIR)/helper-daemon.plist.template config.mk
+	@mkdir -p $(GENERATED_DIR)
+	sed -e 's|@@HELPER_ID@@|$(HELPER_ID)|g' \
+	    -e 's|@@BUNDLE_ID_PREFIX@@|$(BUNDLE_ID_PREFIX)|g' $< > $@
 
 # Copy and sign CLI
 $(PRODUCTS_DIR)/smcfan: spm-build
 	@mkdir -p $(PRODUCTS_DIR)
-	cp $(SPM_BUILD_DIR)/smcfan $@
-	codesign -s "$(CERT_ID)" -f --identifier smcfan --timestamp "$@"
+	@cp $(SPM_BUILD_DIR)/smcfan $@
+	@codesign -s "$(CERT_ID)" -f --identifier smcfan --timestamp "$@"
 
 # Copy and sign installer
 $(APP_MACOS)/SMCFanInstaller: spm-build
 	@mkdir -p $(APP_MACOS)
-	cp $(SPM_BUILD_DIR)/installer $@
-	xattr -cr "$@"
-	codesign -s "$(CERT_ID)" -f --identifier "$(INSTALLER_ID)" --timestamp "$@"
+	@cp $(SPM_BUILD_DIR)/installer $@
+	@xattr -cr "$@"
+	@codesign -s "$(CERT_ID)" -f --identifier "$(INSTALLER_ID)" --timestamp "$@"
 
 # Build helper with swiftc (for plist embedding - SPM doesn't support this)
-HELPER_SOURCES = $(wildcard Sources/smcfanhelper/*.swift) Sources/common/Config.swift Sources/common/SMCProtocol.swift
+HELPER_SOURCES = $(wildcard Sources/smcfanhelper/*.swift) \
+	Sources/common/Config.swift Sources/common/SMCProtocol.swift
 
-$(APP_RESOURCES)/$(HELPER_ID): $(HELPER_SOURCES) $(GENERATED_DIR)/Config.generated.swift $(GENERATED_DIR)/helper-info.plist $(GENERATED_DIR)/helper-launchd.plist spm-build
+$(APP_RESOURCES)/$(HELPER_ID): $(HELPER_SOURCES) $(GENERATED_DIR)/Config.generated.swift \
+	$(GENERATED_DIR)/helper-info.plist $(GENERATED_DIR)/helper-launchd.plist spm-build
 	@mkdir -p $(APP_RESOURCES)
 	# Build helper with swiftc to enable plist embedding (pure Swift - no C dependency)
-	swiftc -O -parse-as-library \
+	@swiftc -O -parse-as-library \
 		-module-name smcfanhelper \
 		-D GENERATED_CONFIG -D DIRECT_BUILD \
 		Sources/common/Config.swift \
@@ -83,13 +103,24 @@ $(APP_RESOURCES)/$(HELPER_ID): $(HELPER_SOURCES) $(GENERATED_DIR)/Config.generat
 		$(GENERATED_DIR)/Config.generated.swift \
 		$(wildcard Sources/smcfanhelper/*.swift) \
 		-framework Foundation -framework IOKit -framework CoreFoundation \
-		-Xlinker -sectcreate -Xlinker __TEXT -Xlinker __info_plist -Xlinker $(GENERATED_DIR)/helper-info.plist \
-		-Xlinker -sectcreate -Xlinker __TEXT -Xlinker __launchd_plist -Xlinker $(GENERATED_DIR)/helper-launchd.plist \
+		-Xlinker -sectcreate -Xlinker __TEXT -Xlinker __info_plist \
+		-Xlinker $(GENERATED_DIR)/helper-info.plist \
+		-Xlinker -sectcreate -Xlinker __TEXT -Xlinker __launchd_plist \
+		-Xlinker $(GENERATED_DIR)/helper-launchd.plist \
 		-o $@
-	chmod +x "$@"
-	xattr -cr "$(APP_DIR)"
-	codesign -s "$(CERT_ID)" -f --options runtime --timestamp "$@"
-	cp $(GENERATED_DIR)/helper-launchd.plist "$(APP_RESOURCES)/$(HELPER_ID).plist"
+	@chmod +x "$@"
+	@xattr -cr "$(APP_DIR)"
+	@codesign -s "$(CERT_ID)" -f --options runtime --timestamp \
+		--entitlements templates/helper.entitlements "$@"
+	@cp $(GENERATED_DIR)/helper-launchd.plist "$(APP_RESOURCES)/$(HELPER_ID).plist"
+
+# SMAppService (macOS 13+): plist in LaunchDaemons, helper in MacOS
+$(APP_LAUNCH_DAEMONS)/$(HELPER_ID).plist: $(GENERATED_DIR)/helper-daemon.plist
+	@mkdir -p $(APP_LAUNCH_DAEMONS)
+	@cp $< "$@"
+
+$(APP_MACOS)/$(HELPER_ID): $(APP_RESOURCES)/$(HELPER_ID)
+	@cp "$<" "$@"
 
 # Generate app Info.plist
 $(APP_CONTENTS)/Info.plist: $(TEMPLATES_DIR)/Info.plist.template config.mk
@@ -108,6 +139,67 @@ install: all
 # Run unit tests
 test:
 	$(SPM_ENV) swift test --filter DataConversionTests
+
+# Uninstall helper (for clean reinstall)
+uninstall-helper:
+	@echo "Uninstalling helper..."
+	-sudo launchctl bootout system/$(HELPER_ID) 2>/dev/null
+	-sudo rm -f /Library/LaunchDaemons/$(HELPER_ID).plist
+	-sudo rm -f /Library/PrivilegedHelperTools/$(HELPER_ID)
+	@echo "Helper uninstalled."
+
+# Run integration tests (requires root and installed helper)
+test-integration: all
+	@swift build --product xcbeautify 2>/dev/null
+	@echo "Resetting helper registration..."
+	@sudo launchctl bootout system/$(HELPER_ID) 2>/dev/null || true
+	@sudo sfltool resetbtm 2>/dev/null || true
+	@sleep 2
+	@echo "Installing helper to /Applications..."
+	@sudo rm -rf /Applications/SMCFanHelper.app
+	@sudo cp -R "$(APP_DIR)" /Applications/
+	@sudo chown -R root:wheel /Applications/SMCFanHelper.app
+	@echo "Running installer..."
+	/Applications/SMCFanHelper.app/Contents/MacOS/SMCFanInstaller
+	@echo "Waiting for daemon to start..."
+	@for i in 1 2 3 4 5; do \
+		if sudo launchctl list $(HELPER_ID) 2>/dev/null | grep -q "PID"; then \
+			echo "Daemon started successfully"; \
+			break; \
+		fi; \
+		sleep 1; \
+	done
+	@if ! sudo launchctl list $(HELPER_ID) 2>/dev/null | grep -q "PID"; then \
+		echo "Error: Daemon failed to start"; \
+		sudo launchctl list | grep $(HELPER_ID) || true; \
+		exit 1; \
+	fi
+	@echo "Running tests as root..."
+	@sudo -v
+	@sudo script -q /dev/null bash -c '$(SPM_ENV) swift test --enable-code-coverage \
+		--filter IntegrationTests' 2>&1 | script -q /dev/null bash -c 'stty -echo 2>/dev/null; \
+		env -u NO_COLOR .build/debug/xcbeautify --is-ci'
+
+# Generate coverage report from last test run
+coverage-report:
+	@PROFDATA=$$(find .build -name 'default.profdata' 2>/dev/null | head -1); \
+	if [ -z "$$PROFDATA" ]; then \
+		echo "No coverage data found. Run tests with coverage first."; exit 1; fi; \
+	BINARY=$$(find .build -name 'SMCFanPackageTests.xctest' -type d 2>/dev/null | head -1)\
+		/Contents/MacOS/SMCFanPackageTests; \
+	xcrun llvm-cov report "$$BINARY" -instr-profile="$$PROFDATA" \
+		-ignore-filename-regex='.build|Tests'
+
+# Generate detailed coverage in lcov format
+coverage-lcov:
+	@PROFDATA=$$(find .build -name 'default.profdata' 2>/dev/null | head -1); \
+	if [ -z "$$PROFDATA" ]; then \
+		echo "No coverage data found. Run tests with coverage first."; exit 1; fi; \
+	BINARY=$$(find .build -name 'SMCFanPackageTests.xctest' -type d 2>/dev/null | head -1)\
+		/Contents/MacOS/SMCFanPackageTests; \
+	xcrun llvm-cov export "$$BINARY" -instr-profile="$$PROFDATA" -format=lcov \
+		-ignore-filename-regex='.build|Tests' > coverage.lcov; \
+	echo "Coverage written to coverage.lcov"
 
 # Run E2E test
 test-e2e: all
@@ -183,10 +275,14 @@ help:
 	@echo "SMCFan Build System (SPM + signing)"
 	@echo ""
 	@echo "Targets:"
-	@echo "  all       - Build all components"
-	@echo "  install   - Install to /Applications"
-	@echo "  test      - Run unit tests"
-	@echo "  test-e2e  - End-to-end test"
-	@echo "  format    - Format code with swift-format"
-	@echo "  lint      - Lint code with swift-format"
-	@echo "  clean     - Remove build artifacts"
+	@echo "  all               - Build all components"
+	@echo "  install           - Install to /Applications"
+	@echo "  test              - Run unit tests"
+	@echo "  test-integration  - Run integration tests (sudo, helper installed)"
+	@echo "  test-e2e          - End-to-end test"
+	@echo "  coverage-report   - Generate coverage report from last test run"
+	@echo "  coverage-lcov     - Generate coverage in lcov format"
+	@echo "  uninstall-helper - Uninstall privileged helper (for clean reinstall)"
+	@echo "  format            - Format code with swift-format"
+	@echo "  lint              - Lint code with swift-format"
+	@echo "  clean             - Remove build artifacts"

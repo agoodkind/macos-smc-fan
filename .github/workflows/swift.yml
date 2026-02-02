@@ -2,33 +2,53 @@ name: Swift
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
   pull_request:
-    branches: [ main ]
+    branches: [main]
 
 jobs:
   build:
     runs-on: macos-latest
-    
+
     steps:
-    - uses: actions/checkout@v4
-    
-    - name: Select Xcode version
-      run: sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
-    
-    - name: Build Swift Package
-      env:
-        HELPER_BUNDLE_ID: io.goodkind.smcfanhelper
-      run: swift build -v
-    
-    - name: Verify package structure
-      run: swift package describe
-    
-    - name: Run unit tests
-      env:
-        HELPER_BUNDLE_ID: io.goodkind.smcfanhelper
-      run: swift test --filter DataConversionTests
-    
-    - name: Check for build warnings
-      run: |
-        swift build 2>&1 | grep -i "warning" || echo "No warnings"
+      - uses: actions/checkout@v4
+
+      - name: Select Xcode version
+        run: sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+
+      - name: Build Swift Package
+        env:
+          HELPER_BUNDLE_ID: io.goodkind.smcfanhelper
+        run: swift build -v
+
+      - name: Verify package structure
+        run: swift package describe
+
+      - name: Run unit tests
+        env:
+          HELPER_BUNDLE_ID: io.goodkind.smcfanhelper
+        run: swift test --filter DataConversionTests
+
+      - name: Run tests with code coverage
+        env:
+          HELPER_BUNDLE_ID: io.goodkind.smcfanhelper
+        run: swift test --enable-code-coverage --filter DataConversionTests
+
+      - name: Report code coverage
+        run: |
+          COVDIR="$(find .build -type d -name codecov 2>/dev/null | head -1)"
+          if [[ -n "$COVDIR" ]]; then
+            PROFDATA="$COVDIR/default.profdata"
+            XCTEST="$(find .build -name "SMCFanTests.xctest" -type d 2>/dev/null | head -1)"
+            if [[ -f "$PROFDATA" && -d "$XCTEST" ]]; then
+              xcrun llvm-cov report "$XCTEST/Contents/MacOS/SMCFanTests" \
+                -instr-profile="$PROFDATA" -ignore-filename-regex='.build|Tests/' || true
+            fi
+            if [[ -f "$COVDIR/SMCFan.json" ]]; then
+              echo "Coverage export: $COVDIR/SMCFan.json"
+            fi
+          fi
+
+      - name: Check for build warnings
+        run: |
+          swift build 2>&1 | grep -i "warning" || echo "No warnings"

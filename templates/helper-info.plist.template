@@ -10,10 +10,5 @@
     <string>1.0</string>
     <key>CFBundleShortVersionString</key>
     <string>1.0</string>
-    <key>SMAuthorizedClients</key>
-    <array>
-        <string>identifier "@@INSTALLER_ID@@" and anchor apple generic and certificate leaf[subject.OU] = "@@TEAM_ID@@"</string>
-        <string>identifier smcfan and anchor apple generic and certificate leaf[subject.OU] = "@@TEAM_ID@@"</string>
-    </array>
 </dict>
 </plist>
