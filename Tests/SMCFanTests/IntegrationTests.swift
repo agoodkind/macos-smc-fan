@@ -836,7 +836,8 @@ final class IntegrationTests: XCTestCase {
 
   private static var cliPath: String {
     let fileURL = URL(fileURLWithPath: #file)
-    let packageRoot = fileURL
+    let packageRoot =
+      fileURL
       .deletingLastPathComponent()
       .deletingLastPathComponent()
       .deletingLastPathComponent()

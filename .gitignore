@@ -18,3 +18,4 @@ xcuserdata/
 .build/
 .swiftpm/
 Package.resolved
+.DS_Store

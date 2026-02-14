@@ -1,4 +1,4 @@
-// swift-tools-version: 5.9
+// swift-tools-version: 6.0
 //
 //  Package.swift
 //  SMCFan
@@ -15,24 +15,30 @@ let package = Package(
     products: [
         .executable(name: "smcfan", targets: ["smcfan"]),
         .executable(name: "smcfanhelper", targets: ["smcfanhelper"]),
-        .executable(name: "installer", targets: ["installer"]),
+        .executable(name: "installer", targets: ["installer"])
     ],
     dependencies: [
-        .package(url: "https://github.com/cpisciotta/xcbeautify", from: "3.0.0"),
+        .package(url: "https://github.com/cpisciotta/xcbeautify", from: "3.0.0")
     ],
     targets: [
         // Common Swift protocol and types
         .target(
             name: "SMCCommon",
             dependencies: [],
-            path: "Sources/common"
+            path: "Sources/common",
+            swiftSettings: [
+                .enableUpcomingFeature("StrictConcurrency")
+            ]
         ),
 
         // CLI tool (XPC client)
         .executableTarget(
             name: "smcfan",
             dependencies: ["SMCCommon"],
-            path: "Sources/smcfan"
+            path: "Sources/smcfan",
+            swiftSettings: [
+                .enableUpcomingFeature("StrictConcurrency")
+            ]
         ),
 
         // XPC helper daemon (privileged service)
@@ -40,21 +46,30 @@ let package = Package(
         .executableTarget(
             name: "smcfanhelper",
             dependencies: ["SMCCommon"],
-            path: "Sources/smcfanhelper"
+            path: "Sources/smcfanhelper",
+            swiftSettings: [
+                .enableUpcomingFeature("StrictConcurrency")
+            ]
         ),
 
         // SMJobBless installer
         .executableTarget(
             name: "installer",
             dependencies: ["SMCCommon"],
-            path: "Sources/installer"
+            path: "Sources/installer",
+            swiftSettings: [
+                .enableUpcomingFeature("StrictConcurrency")
+            ]
         ),
 
         // Tests
         .testTarget(
             name: "SMCFanTests",
             dependencies: [],
-            path: "Tests/SMCFanTests"
-        ),
+            path: "Tests/SMCFanTests",
+            swiftSettings: [
+                .enableUpcomingFeature("StrictConcurrency")
+            ]
+        )
     ]
 )

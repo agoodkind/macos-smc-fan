@@ -86,16 +86,19 @@ The T2 chip added a security layer. SMC functions moved into this separate proce
 
 With Apple Silicon, Apple integrated SMC functionality into the main chip itself [^6]. Investigation revealed a fundamental architectural shift: instead of the SMC independently managing fans, a background system process called `thermalmonitord` [^10][^11] now coordinates thermal policy. Runtime tracing and decompiled code analysis confirmed this process actively prevents direct fan control by enforcing a locked state that blocks manual mode changes.
 
+**Direct Mode on M1**: Runtime testing has observed that direct writes to `F%dMd=1` (manual mode) succeed on M1 hardware without requiring the `Ftst` unlock sequence. The firmware accepts manual mode changes immediately, similar to Intel Macs but with Apple Silicon data formats (4-byte IEEE 754 float). M2 behavior remains untested but may follow the same pattern. This differs from M3/M4 where `thermalmonitord` enforcement requires the diagnostic unlock.
+
 **Note on Asahi Linux**: The Asahi Linux project developed a kernel driver (`macsmc-hwmon`) [^14][^15] that provides fan control when running Linux on Apple Silicon. Their approach differs fundamentally: Linux has no `thermalmonitord` equivalent blocking writes, so direct SMC access via kernel driver is sufficient. They expose fan control through standard hwmon sysfs interfaces with an "unsafe" module parameter (`fan_control=1`). This work documents the SMC key schema and data formats but does not address the macOS-specific challenge of bypassing daemon enforcement.
 
 **Key Changes from Legacy:**
 
 - Active daemon-based thermal management replaces passive SMC automation
-- Fan mode writes are blocked by default ("system mode")
+- Fan mode writes are blocked by default ("system mode") on M3/M4
+- M1 allows direct mode writes without unlock sequence
 - SMC operations moved to firmware layer
 - Discovery of diagnostic unlock mechanism that temporarily disables daemon enforcement
 
-Experimental testing identified a diagnostic flag (`Ftst`) that temporarily disables daemon enforcement. Decompiled code analysis confirms this mechanism is consistent across M1-M4 generations. Manual control can be maintained with an active privileged process.
+Experimental testing identified a diagnostic flag (`Ftst`) that temporarily disables daemon enforcement on M3/M4. Decompiled code analysis confirms this mechanism is consistent across M1-M4 generations. Manual control can be maintained with an active privileged process.
 
 Note: A separate process called `thermald` also runs on these Macs. Analysis of its imports shows it monitors power/thermal metrics and publishes **thermal pressure levels** (nominal/fair/serious/critical) via system notifications for apps to react to [^1]. It does not directly control fans (that's `thermalmonitord`'s role). It appears that they are complementary: `thermald` reports, `thermalmonitord` acts.
 
@@ -349,18 +352,29 @@ Testing confirms that each fan can be controlled independently on Apple Silicon:
 
 **Enabling Manual Control (per fan):**
 
-1. Write `Ftst=1` to signal diagnostic mode
-2. Retry writing `F%dMd=1` for the target fan until successful (3-6 seconds)
-3. Write target RPM to `F%dTg`
-4. Fan is now under manual control
+The implementation uses a two-phase strategy that tries direct mode first, falling back to the `Ftst` unlock if needed:
+
+1. Read `Ftst` from hardware
+2. If `Ftst=1` (already in diagnostic mode), use the unlock sequence
+3. If `Ftst=0`, try direct write of `F%dMd=1` for the target fan
+4. If direct write succeeds (observed on M1), manual control is enabled instantly
+5. If direct write fails with `0x82`, fall back to the `Ftst` unlock sequence:
+   - Write `Ftst=1` to signal diagnostic mode
+   - Retry writing `F%dMd=1` until successful (3-6 seconds)
+6. Write target RPM to `F%dTg`
+7. Fan is now under manual control
+
+This approach is fully stateless and self-discovering. On M1 hardware, control is instant. On M3/M4, the unlock sequence runs automatically when needed.
 
 **Returning to System Control:**
 
-1. When the **last** manual fan returns to automatic, write `Ftst=0`
-2. `thermalmonitord` regains control and sets mode to 3 (system)
-3. Fans can drop to 0 RPM if thermal conditions allow
+1. When the **last** manual fan returns to automatic, read `Ftst` from hardware
+2. If `Ftst=1`, write `Ftst=0` to return control to `thermalmonitord`
+3. If `Ftst=0`, no reset is needed (direct mode was used)
+4. `thermalmonitord` regains control and sets mode to 3 (system)
+5. Fans can drop to 0 RPM if thermal conditions allow
 
-**Important**: Only reset `Ftst=0` when **all** fans are returning to automatic. If other fans remain in manual mode, only set the target fan's mode to 0.
+**Important**: Only reset `Ftst=0` when **all** fans are returning to automatic and `Ftst` is currently set. If other fans remain in manual mode, only set the target fan's mode to 0.
 
 ### Test Results
 
@@ -574,7 +588,7 @@ The following claims require additional verification, and the methodologies used
 | Item | Status | Notes |
 | ---- | ------ | ----- |
 | M5+ chip compatibility | **Untested** | Unlock mechanism and SMC key schema assumed consistent but not verified |
-| M1/M2 generation testing | **Partial** | Decompiled code suggests consistency, but runtime testing was primarily on M4 Max |
+| M1/M2 generation testing | **Partial** | M1 observed to support direct mode writes without `Ftst` unlock. M2 untested. Decompiled code suggests consistency across M1-M4. |
 | T2-equipped Macs | **Untested** | Mode 2 behavior referenced in prior work but not verified |
 | Mac Studio / Mac Pro | **Untested** | Multi-fan behavior on desktop hardware with 2+ fans |
 
