@@ -95,6 +95,9 @@ With Apple Silicon, Apple integrated SMC functionality into the main chip itself
 
 Note: A separate process called `thermald` also runs on these Macs. Analysis of its imports shows it monitors power/thermal metrics and publishes **thermal pressure levels** (nominal/fair/serious/critical) via system notifications for apps to react to [^1]. It does not directly control fans (that's `thermalmonitord`'s role). It appears that they are complementary: `thermald` reports, `thermalmonitord` acts.
 
+#### M2 Generation
+Further research is needed to determine the changes between M1 and M2 SMC architecture.
+
 #### M3 and M4 Generation
 
 **Key Changes**
