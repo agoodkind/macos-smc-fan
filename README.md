@@ -82,7 +82,7 @@ Standard Macs used a dedicated System Management Controller chip [^7][^9]. Writi
 
 The T2 chip added a security layer. SMC functions moved into this separate processor [^3], adding abstraction between the OS and hardware. Manual fan control still worked but required different SMC key sequences.
 
-#### M1 and M2 Generation
+#### M1 Generation
 
 With Apple Silicon, Apple integrated SMC functionality into the main chip itself [^6]. Investigation revealed a fundamental architectural shift: instead of the SMC independently managing fans, a background system process called `thermalmonitord` [^10][^11] now coordinates thermal policy. Runtime tracing and decompiled code analysis confirmed this process actively prevents direct fan control by enforcing a locked state that blocks manual mode changes.
 
@@ -90,25 +90,18 @@ With Apple Silicon, Apple integrated SMC functionality into the main chip itself
 
 **Key Changes from Legacy:**
 
-- Active daemon-based thermal management replaces passive SMC automation
-- Fan mode writes are blocked by default ("system mode")
+- Active daemon-based thermal management replaces passive SMC automaton
 - SMC operations moved to firmware layer
-- Discovery of diagnostic unlock mechanism that temporarily disables daemon enforcement
-
-Experimental testing identified a diagnostic flag (`Ftst`) that temporarily disables daemon enforcement. Decompiled code analysis confirms this mechanism is consistent across M1-M4 generations. Manual control can be maintained with an active privileged process.
 
 Note: A separate process called `thermald` also runs on these Macs. Analysis of its imports shows it monitors power/thermal metrics and publishes **thermal pressure levels** (nominal/fair/serious/critical) via system notifications for apps to react to [^1]. It does not directly control fans (that's `thermalmonitord`'s role). It appears that they are complementary: `thermald` reports, `thermalmonitord` acts.
 
 #### M3 and M4 Generation
 
-Thermal management changed slightly, however more research is needed to establish any significant changes.
+**Key Changes**
+- Fan mode writes are blocked by default ("system mode")
+- Discovery of diagnostic unlock mechanism that temporarily disables daemon enforcement
 
-**Additional Restrictions:**
-
-- **Thermal Controller Response Times**: Decompiled code analysis possibly reveals a new thermal management component with faster response times (250ms polling under load vs 4000ms idle), resulting in more aggressive daemon reclaim behavior
-- **More Aggressive Enforcement**: Faster polling makes manual override more challenging to maintain under thermal load
-
-The diagnostic unlock mechanism continues to function for mode transitions. See [Daemon Reclaim Behavior](#daemon-reclaim-behavior) for technical details.
+Experimental testing identified a diagnostic flag (`Ftst`) that temporarily disables daemon enforcement. Decompiled code analysis confirms this mechanism is consistent across M3-M4 generations. Manual control can be maintained with an active privileged process. See [Daemon Reclaim Behavior](#daemon-reclaim-behavior) for technical details.
 
 #### M5+
 
