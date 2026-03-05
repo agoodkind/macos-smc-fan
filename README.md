@@ -36,7 +36,7 @@ This project documents the analysis of Apple Silicon's thermal management system
 - **IDA Pro (Hex-Rays Decompiler)**: Used to decompile `AppleSMC.kext` (kernel extension, ~801 functions) and `thermalmonitord` (userspace daemon, ~775 functions) from their stripped arm64e binaries into pseudocode
 - **dtrace**: Runtime tracing of SMC operations and daemon behavior to correlate static analysis with actual execution paths
 - **LLMs**: Applied to analyze tens of thousands of lines of decompiled pseudocode, identify patterns in SMC key handling, and cross-reference function behaviors across binaries
-- **Test Hardware**: MacBook Pro (14-inch, M4 Max, 2024, Apple Silicon) and iMac (Retina 5K, 27-inch, 2019, Intel). Model identifiers: `Mac16,6` and `iMac19,1` respectively
+- **Test Hardware**: MacBook Pro (14-inch, M4 Max, 2024, Apple Silicon), MacBook Pro (16-inch, M1 Pro, 2021, Apple Silicone), and iMac (Retina 5K, 27-inch, 2019, Intel). Model identifiers: `Mac16,6` and `iMac19,1` respectively
 
 ### Approach
 
