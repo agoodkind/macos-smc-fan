@@ -36,7 +36,7 @@ This project documents the analysis of Apple Silicon's thermal management system
 - **IDA Pro (Hex-Rays Decompiler)**: Used to decompile `AppleSMC.kext` (kernel extension, ~801 functions) and `thermalmonitord` (userspace daemon, ~775 functions) from their stripped arm64e binaries into pseudocode
 - **dtrace**: Runtime tracing of SMC operations and daemon behavior to correlate static analysis with actual execution paths
 - **LLMs**: Applied to analyze tens of thousands of lines of decompiled pseudocode, identify patterns in SMC key handling, and cross-reference function behaviors across binaries
-- **Test Hardware**: MacBook Pro (14-inch, M4 Max, 2024, Apple Silicon), MacBook Pro (16-inch, M1 Pro, 2021, Apple Silicone), and iMac (Retina 5K, 27-inch, 2019, Intel). Model identifiers: `Mac16,6` and `iMac19,1` respectively
+- **Test Hardware**: MacBook Pro (14-inch, M4 Max, 2024, Apple Silicon), MacBook Pro (16-inch, M1 Pro, 2021, Apple Silicon), and iMac (Retina 5K, 27-inch, 2019, Intel). Model identifiers: `Mac16,6`, `MacBookPro18,1`, and `iMac19,1` respectively
 
 ### Approach
 
@@ -385,6 +385,8 @@ The following measurements were collected on M4 Max hardware (2 fans, reported m
 
 Each row shows a tested transition with measured results.
 
+**Legend:** `F0`/`F1` = Fan 0/1, `A` = Auto, `M` = Manual, `@RPM` = actual RPM
+
 | From State | Action | To State | Cmd (ms) | Stable (ms) | Side Effects |
 | ---------- | ------ | -------- | -------- | ----------- | ------------ |
 | F0: A@0, F1: A@0 | set 0 5000 | F0: M@5000, F1: A@2500 | 5252 | 8000 | F1 wakes to auto min |
@@ -394,8 +396,6 @@ Each row shows a tested transition with measured results.
 | F0: M@8560, F1: A@2500 | set 0 0 | F0: M@0, F1: A@2500 | 22 | 1000 | Fan stops completely |
 | F0: A@0, F1: A@0 | set 0 1000 | F0: M@1000, F1: A@2500 | 6657 | 9000 | Below "min" works |
 | F0: M@1000, F1: A@2500 | set 1 6000 | F0: M@1000, F1: M@6000 | 21 | 5000 | Both fans independent |
-
-**Legend:** `F0`/`F1` = Fan 0/1, `A` = Auto, `M` = Manual, `@RPM` = actual RPM
 
 #### State Diagram
 
@@ -471,8 +471,10 @@ Implementations requiring persistent manual control must maintain `Ftst=1` state
 
 ### Prerequisites
 
+> **⚠️ Paid Apple Developer Account Required**
+> A paid Apple Developer Program membership is required to obtain a Developer ID certificate for code signing the privileged helper daemon. Free accounts and self-signed certificates are not supported. This is a hard requirement — without it, the helper daemon cannot be installed.
+
 - Xcode Command Line Tools: `xcode-select --install`
-- **Paid Apple Developer account (REQUIRED)**. A paid account is necessary to obtain a Developer ID certificate for code signing the privileged helper daemon.
 - Valid Apple Developer ID certificate for code signing.
 - Your Apple Team ID (find at <https://developer.apple.com/account>).
 
@@ -529,7 +531,7 @@ The installer uses `SMJobBless` [^4] to install a privileged helper daemon.
 
 ### Uninstall
 
-Replace `YOUR_BUNDLE_ID` with your configured bundle identifier prefix:
+Replace `YOUR_BUNDLE_ID` with the `BUNDLE_ID_PREFIX` value from your `config.mk`:
 
 ```bash
 sudo launchctl unload /Library/LaunchDaemons/YOUR_BUNDLE_ID.smcfanhelper.plist
@@ -672,7 +674,7 @@ Apple could lock down the `Ftst` flag at the kernel or firmware level and requir
 [^8]: [smcFanControl Repository](https://github.com/hholtmann/smcFanControl) - Open-source fan control tool
 [^9]: [Linux Kernel applesmc Driver](https://github.com/torvalds/linux/blob/master/drivers/hwmon/applesmc.c) - Intel Mac SMC driver; authoritative source for legacy SMC key schema
 [^10]: [Thermals and macOS - Dave MacLachlan](https://dmaclach.medium.com/thermals-and-macos-c0db81062889) - Thermal monitoring APIs and `thermald`/`thermalmonitord` behavior on macOS
-[^11]: Jonathan Levin, "Mac OS X and iOS Internals, Volume I: User Space" - System daemons and thermal management architecture
+[^11]: Jonathan Levin, ["Mac OS X and iOS Internals, Volume I: User Mode"](http://www.newosxbook.com) (ISBN: 099105556X) - System daemons and thermal management architecture
 [^12]: [Keep your Mac laptop within acceptable operating temperatures](https://support.apple.com/en-us/102336) - Mac thermal management and fan behavior
 [^13]: [IOKit Fundamentals](https://developer.apple.com/library/archive/documentation/DeviceDrivers/Conceptual/IOKitFundamentals/Introduction/Introduction.html) - Apple's device driver and hardware access framework
 [^14]: [Linux Kernel macsmc-hwmon Driver](https://github.com/torvalds/linux/blob/master/drivers/hwmon/macsmc-hwmon.c) - Apple Silicon SMC hwmon driver (Asahi Linux); provides fan control on Linux via hwmon interfaces
