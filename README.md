@@ -150,7 +150,7 @@ Cross-platform code must detect and handle both formats [^5][^6]. See [Architect
 
 ### Fan Modes
 
-The values for the `F%dMd` mode key were identified by monitoring system state transitions during experimental testing and analyzing the decompiled `thermalmonitord` logic.
+The values for the `F%dMd` mode key were identified by monitoring system state transitions during experimental testing and analyzing the decompiled `thermalmonitord` logic. The mode names (Auto, Manual, System) are informal labels, not official Apple terminology.
 
 | Mode | Name | Description |
 | --- | --- | --- |
@@ -600,6 +600,9 @@ The following claims require additional verification, and the methodologies used
 | Sleep/wake `Ftst` reset | **Inferred** | Decompiled sleep handler analysis suggests firmware resets `Ftst`, not the daemon. Runtime testing confirms control loss on wake, but firmware-level reset not directly observed. |
 | Polling intervals (4000ms/250ms) | **Inferred** | Values extracted from decompiled `thermalmonitord`. Actual timing may vary by macOS version or hardware. |
 | M3/M4 thermal controller changes | **Partial** | `updateCPUFastDieTargetPMP` flag identified, but behavioral differences not fully characterized. |
+| Mode 0 + `Ftst=1` reclaim behavior | **Not verified** | When a fan returns to mode 0 (`F%dMd=0`, `F%dTg=0`) but `Ftst` remains set, `thermalmonitord` is expected to be unable to reclaim to mode 3. Decompiled code shows reclaim suppression is tied to `Ftst` state, not fan mode, but this specific scenario has not been experimentally tested. |
+| Mode 0 "minimum RPM" meaning | **Not verified** | Mode 0 is described as "target defaults to minimum RPM" in the mode table, but it is unconfirmed whether that minimum corresponds to the `F%dMn` key value or some other firmware-determined floor. |
+| Mode 0 thermal ramping | **Not verified** | Unknown whether firmware-level mode 0 performs its own thermal ramping independent of `thermalmonitord`, or if fans simply hold at the default minimum. Only mode 3 has been observed to allow 0 RPM idle. |
 
 ### Alternative Control Mechanisms
 
