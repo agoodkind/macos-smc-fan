@@ -39,8 +39,6 @@ Independent implementations that achieve interoperability with Apple hardware ba
 - Applying the documented timing and retry logic
 - Referencing this research in your project's documentation
 
-No attribution is required, though it is appreciated.
-
 ## Research Purpose
 
 This project constitutes independent security and systems research. The code and documentation result from analysis of publicly observable system behavior, runtime tracing (`dtrace`), and static analysis of compiled binaries using standard reverse engineering tools (IDA Pro). No Apple source code, leaked materials, or confidential documentation were used.
