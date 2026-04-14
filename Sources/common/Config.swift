@@ -9,7 +9,7 @@
 import Foundation
 
 /// Configuration for SMC Fan Control
-public struct SMCFanConfiguration {
+public struct SMCFanConfiguration: Sendable {
   /// Bundle identifier for the XPC helper service
   public let helperBundleID: String
 
