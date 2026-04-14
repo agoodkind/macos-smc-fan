@@ -67,9 +67,6 @@ struct SMCFanInstaller {
         }
 
         print("Helper installed and enabled!")
-      } catch {
-        print("Error: \(error.localizedDescription)")
-        exit(1)
       }
       return
     }

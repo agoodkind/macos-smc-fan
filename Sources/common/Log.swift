@@ -29,48 +29,67 @@ private final class XPCSinkHolder: @unchecked Sendable {
 
 public enum Log {
   private static let subsystem = SMCFanConfiguration.default.helperBundleID
-
-  static let helper = Logger(subsystem: subsystem, category: "fan-control")
-  static let connection = Logger(subsystem: subsystem, category: "smc-connection")
-
+  private static let category = "fan-control"
+  private static let legacyLog = OSLog(subsystem: subsystem, category: category)
   private static let sinkHolder = XPCSinkHolder()
 
   public static func setXPCSink(_ sink: SMCFanClientProtocol?) {
     sinkHolder.sink = sink
   }
 
-  public static func info(_ message: String) {
-    helper.info("\(message, privacy: .public)")
-    sinkHolder.sink?.logMessage(message)
+  private static func format(_ message: String, _ function: String) -> String {
+    "\(function): \(message)"
   }
 
-  public static func notice(_ message: String) {
-    helper.notice("\(message, privacy: .public)")
-    sinkHolder.sink?.logMessage(message)
+  public static func info(_ message: String, function: String = #function) {
+    let msg = format(message, function)
+    if #available(macOS 11.0, *) {
+      Logger(subsystem: subsystem, category: category).info("\(msg, privacy: .public)")
+    } else {
+      os_log(.info, log: legacyLog, "%{public}s", msg)
+    }
+    sinkHolder.sink?.logMessage(msg)
   }
 
-  public static func warning(_ message: String) {
-    helper.warning("\(message, privacy: .public)")
-    sinkHolder.sink?.logMessage(message)
+  public static func notice(_ message: String, function: String = #function) {
+    let msg = format(message, function)
+    if #available(macOS 11.0, *) {
+      Logger(subsystem: subsystem, category: category).notice("\(msg, privacy: .public)")
+    } else {
+      os_log(.default, log: legacyLog, "%{public}s", msg)
+    }
+    sinkHolder.sink?.logMessage(msg)
   }
 
-  public static func debug(_ message: String) {
-    helper.debug("\(message, privacy: .public)")
+  public static func warning(_ message: String, function: String = #function) {
+    let msg = format(message, function)
+    if #available(macOS 11.0, *) {
+      Logger(subsystem: subsystem, category: category).warning("\(msg, privacy: .public)")
+    } else {
+      os_log(.error, log: legacyLog, "%{public}s", msg)
+    }
+    sinkHolder.sink?.logMessage(msg)
   }
 
-  public static func connectionInfo(_ message: String) {
-    connection.info("\(message, privacy: .public)")
-    sinkHolder.sink?.logMessage(message)
+  public static func debug(_ message: String, function: String = #function) {
+    let msg = format(message, function)
+    if #available(macOS 11.0, *) {
+      Logger(subsystem: subsystem, category: category).debug("\(msg, privacy: .public)")
+    } else {
+      os_log(.debug, log: legacyLog, "%{public}s", msg)
+    }
   }
 
-  public static func connectionNotice(_ message: String) {
-    connection.notice("\(message, privacy: .public)")
-    sinkHolder.sink?.logMessage(message)
+  public static func connectionInfo(_ message: String, function: String = #function) {
+    info(message, function: function)
   }
 
-  public static func connectionWarning(_ message: String) {
-    connection.warning("\(message, privacy: .public)")
-    sinkHolder.sink?.logMessage(message)
+  public static func connectionNotice(_ message: String, function: String = #function) {
+    notice(message, function: function)
+  }
+
+  public static func connectionWarning(_ message: String, function: String = #function) {
+    warning(message, function: function)
   }
 
   public static func error(_ message: String) {

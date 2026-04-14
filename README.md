@@ -113,9 +113,15 @@ Further research is needed to determine the changes between M1 and M2 SMC archit
 
 Experimental testing identified a diagnostic flag (`Ftst`) that temporarily disables daemon enforcement. Decompiled code analysis confirms this mechanism is consistent across M3-M4 generations. Manual control can be maintained with an active privileged process. See [Daemon Reclaim Behavior](#daemon-reclaim-behavior) for technical details.
 
-#### M5+
+#### M5 Generation
 
-The unlock mechanism and fan control behavior have not been tested on M5 chips. While the same SMC key schema and `thermalmonitord` architecture are expected to be present, verification is needed to confirm compatibility.
+Testing on M5 Max (Mac17,7, macOS 26.4.1) revealed two changes from M4:
+
+- **Mode key casing changed**: The fan mode key is `F%dmd` (lowercase `m`) rather than `F%dMd` (uppercase `M`). The `readKeyInfo` command returns `SmcNotFound` (0x84) for the uppercase variant. Implementations must probe both casings at runtime.
+- **`Ftst` key absent**: The `Ftst` (Force Test) diagnostic key does not exist on M5 Max. `readKeyInfo` returns `SmcNotFound` (0x84). Direct writes to `F%dmd=1` succeed immediately without any unlock sequence.
+- **No unlock sequence needed**: Fan mode can be set directly by writing `F%dmd=1`, then setting the target RPM via `F%dTg`. No `Ftst` toggle or retry loop is required.
+
+**Conjecture**: The lowercase mode key (`F%dmd`) and absence of `Ftst` may be correlated. On Intel Macs, the mode key is always uppercase (`F%dMd`) and fan control uses a different mechanism entirely (the `FS! ` key). On Apple Silicon M1-M4, the uppercase key persists alongside the `Ftst` unlock mechanism. The M5's shift to lowercase may indicate a firmware-level change in how fan mode control is exposed, possibly simplifying the interface by removing the diagnostic unlock requirement. This is unverified on other M5 variants (M5, M5 Pro).
 
 ## Research Findings
 
@@ -132,8 +138,8 @@ Prior research [^7][^8][^9] found the following keys, which were verified for Ap
 | `F%dTg` | `float` | Target RPM (0 to any value; not bounded by min/max) |
 | `F%dMn` | `float` | Recommended minimum RPM (guideline, not enforced) |
 | `F%dMx` | `float` | Recommended maximum RPM (guideline, not enforced) |
-| `F%dMd` | `uint8` | Mode (0=auto, 1=manual, 3=system) |
-| `Ftst` | `uint8` | Force/test flag |
+| `F%dMd` or `F%dmd` | `uint8` | Mode (0=auto, 1=manual, 3=system). Key casing varies: For example, uppercase on M4 Max, lowercase on M5 Max. Probe both at runtime. |
+| `Ftst` | `uint8` | Force/test flag. Absent on M5 Max. |
 
 **Note on Min/Max Values**: The `F%dMn` and `F%dMx` keys report recommended operating ranges, not hard limits. Testing confirms:
 
@@ -587,12 +593,15 @@ The following claims require additional verification, and the methodologies used
 
 ### Hardware Compatibility
 
-| Item | Status | Notes |
-| ---- | ------ | ----- |
-| M5+ chip compatibility | **Untested** | Unlock mechanism and SMC key schema assumed consistent but not verified |
-| M1/M2 generation testing | **Partial** | M1 observed to support direct mode writes without `Ftst` unlock. M2 untested. Decompiled code suggests consistency across M1-M4. |
-| T2-equipped Macs | **Untested** | Mode 2 behavior referenced in prior work but not verified |
-| Mac Studio / Mac Pro | **Untested** | Multi-fan behavior on desktop hardware with 2+ fans |
+| Hardware | Status | Notes |
+| -------- | ------ | ----- |
+| M1 | **Partial** | Direct mode writes observed without `Ftst` unlock. |
+| M2 | **Untested** | Expected to be consistent with M1 or M3/M4. |
+| M3 / M4 Max | **Tested** | Mode key `F%dMd` (uppercase). `Ftst` present. Unlock poll sequence required. |
+| M5 Max (Mac17,7) | **Tested** | Mode key `F%dmd` (lowercase). `Ftst` absent. Direct mode writes without unlock. |
+| M5 / M5 Pro | **Untested** | Expected to match M5 Max behavior. |
+| T2 (Intel) | **Untested** | Mode 2 behavior referenced in prior work but not verified. |
+| Mac Studio / Mac Pro | **Untested** | Multi-fan behavior on desktop hardware. |
 
 ### Inferred Behaviors
 

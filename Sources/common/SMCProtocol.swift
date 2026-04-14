@@ -88,6 +88,11 @@ public struct FanInfo: Sendable {
     _ fanIndex: UInt,
     reply: @escaping @Sendable (Bool, String?) -> Void
   )
+
+  /// Enumerate all SMC keys
+  func smcEnumerateKeys(
+    reply: @escaping @Sendable ([String]) -> Void
+  )
 }
 
 /// XPC protocol for log message forwarding from daemon to CLI

@@ -51,6 +51,9 @@ struct SMCFan {
         }
         try await Commands.read(key: args[2])
 
+      case "keys":
+        try await Commands.keys(filter: args.count >= 3 ? args[2] : nil)
+
       case "-h", "--help", "help":
         Commands.printUsage()
 

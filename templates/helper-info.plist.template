@@ -5,10 +5,16 @@
     <key>CFBundleIdentifier</key>
     <string>@@HELPER_ID@@</string>
     <key>CFBundleName</key>
-    <string>SMCFanHelper</string>
-    <key>CFBundleVersion</key>
-    <string>1.0</string>
+    <string>@@HELPER_ID@@</string>
     <key>CFBundleShortVersionString</key>
     <string>1.0</string>
+    <key>CFBundleVersion</key>
+    <string>1</string>
+    <key>CFBundleInfoDictionaryVersion</key>
+    <string>6.0</string>
+    <key>SMAuthorizedClients</key>
+    <array>
+        <string>anchor apple generic and identifier "@@BUNDLE_ID_PREFIX@@.SMCFanHelper" and (certificate leaf[field.1.2.840.113635.100.6.1.9] /* exists */ or certificate 1[field.1.2.840.113635.100.6.2.6] /* exists */ and certificate leaf[field.1.2.840.113635.100.6.1.13] /* exists */ and certificate leaf[subject.OU] = @@TEAM_ID@@)</string>
+    </array>
 </dict>
 </plist>

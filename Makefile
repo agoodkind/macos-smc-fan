@@ -36,7 +36,7 @@ sign-app: $(APP_MACOS)/SMCFanInstaller $(APP_RESOURCES)/$(HELPER_ID) \
 	$(APP_CONTENTS)/Info.plist \
 	$(APP_LAUNCH_DAEMONS)/$(HELPER_ID).plist \
 	$(APP_MACOS)/$(HELPER_ID)
-	@codesign -s "$(CERT_ID)" -f --deep --timestamp "$(APP_DIR)"
+	@codesign -s "$(CERT_ID)" -f --timestamp "$(APP_DIR)"
 
 # Generate Swift config file (injected into build)
 $(GENERATED_DIR)/Config.generated.swift: config.mk
@@ -59,6 +59,7 @@ $(GENERATED_DIR)/helper-info.plist: $(TEMPLATES_DIR)/helper-info.plist.template 
 	sed -e 's|@@HELPER_ID@@|$(HELPER_ID)|g' \
 	    -e 's|@@TEAM_ID@@|$(TEAM_ID)|g' \
 	    -e 's|@@INSTALLER_ID@@|$(INSTALLER_ID)|g' \
+	    -e 's|@@BUNDLE_ID_PREFIX@@|$(BUNDLE_ID_PREFIX)|g' \
 	    $< > $@
 
 # Generate helper launchd.plist
@@ -89,7 +90,7 @@ $(APP_MACOS)/SMCFanInstaller: spm-build
 
 # Build helper with swiftc (for plist embedding - SPM doesn't support this)
 HELPER_SOURCES = $(wildcard Sources/smcfanhelper/*.swift) \
-	Sources/common/Config.swift Sources/common/SMCProtocol.swift
+	Sources/common/Config.swift Sources/common/SMCProtocol.swift Sources/common/Log.swift
 
 $(APP_RESOURCES)/$(HELPER_ID): $(HELPER_SOURCES) $(GENERATED_DIR)/Config.generated.swift \
 	$(GENERATED_DIR)/helper-info.plist $(GENERATED_DIR)/helper-launchd.plist spm-build
@@ -100,6 +101,7 @@ $(APP_RESOURCES)/$(HELPER_ID): $(HELPER_SOURCES) $(GENERATED_DIR)/Config.generat
 		-D GENERATED_CONFIG -D DIRECT_BUILD \
 		Sources/common/Config.swift \
 		Sources/common/SMCProtocol.swift \
+		Sources/common/Log.swift \
 		$(GENERATED_DIR)/Config.generated.swift \
 		$(wildcard Sources/smcfanhelper/*.swift) \
 		-framework Foundation -framework IOKit -framework CoreFoundation \
@@ -112,7 +114,6 @@ $(APP_RESOURCES)/$(HELPER_ID): $(HELPER_SOURCES) $(GENERATED_DIR)/Config.generat
 	@xattr -cr "$(APP_DIR)"
 	@codesign -s "$(CERT_ID)" -f --options runtime --timestamp \
 		--entitlements templates/helper.entitlements "$@"
-	@cp $(GENERATED_DIR)/helper-launchd.plist "$(APP_RESOURCES)/$(HELPER_ID).plist"
 
 # SMAppService (macOS 13+): plist in LaunchDaemons, helper in MacOS
 $(APP_LAUNCH_DAEMONS)/$(HELPER_ID).plist: $(GENERATED_DIR)/helper-daemon.plist
@@ -131,10 +132,16 @@ $(APP_CONTENTS)/Info.plist: $(TEMPLATES_DIR)/Info.plist.template config.mk
 	    $< > $@
 	xattr -cr "$@"
 
-# Install to /Applications
-install: all
-	sudo cp -r "$(APP_DIR)" /Applications/
+# Install to /Applications and register helper
+install: all uninstall-helper
+	@echo "Installing to /Applications..."
+	sudo rm -rf /Applications/SMCFanHelper.app
+	sudo cp -R "$(APP_DIR)" /Applications/
 	sudo chown -R root:wheel /Applications/SMCFanHelper.app
+	@echo "Registering helper..."
+	/Applications/SMCFanHelper.app/Contents/MacOS/SMCFanInstaller
+	@echo "Verifying..."
+	@sudo launchctl list | grep $(HELPER_ID) && echo "Helper registered." || echo "Warning: helper not found in launchctl."
 
 # Run unit tests
 test:
@@ -143,9 +150,11 @@ test:
 # Uninstall helper (for clean reinstall)
 uninstall-helper:
 	@echo "Uninstalling helper..."
-	-sudo launchctl bootout system/$(HELPER_ID) 2>/dev/null
+	-sudo launchctl bootout system/$(HELPER_ID) || true
+	-sudo sfltool resetbtm || true
 	-sudo rm -f /Library/LaunchDaemons/$(HELPER_ID).plist
 	-sudo rm -f /Library/PrivilegedHelperTools/$(HELPER_ID)
+	-sudo rm -rf /Applications/SMCFanHelper.app
 	@echo "Helper uninstalled."
 
 # Run integration tests (requires root and installed helper)

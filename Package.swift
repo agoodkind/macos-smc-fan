@@ -11,7 +11,7 @@ import PackageDescription
 
 let package = Package(
     name: "SMCFan",
-    platforms: [.macOS(.v13)],
+    platforms: [.macOS(.v10_15)],
     products: [
         .executable(name: "smcfan", targets: ["smcfan"]),
         .executable(name: "smcfanhelper", targets: ["smcfanhelper"]),

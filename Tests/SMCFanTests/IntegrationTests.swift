@@ -50,6 +50,84 @@ final class IntegrationTests: XCTestCase {
     super.tearDown()
   }
 
+  // MARK: - SMC Key Diagnostics
+  // These run first (alphabetical) and catch hardware-level issues
+  // before any fan control tests. If these fail, the rest will too,
+  // and the output tells you exactly why.
+
+  func testA_SMCKeyDiscovery() throws {
+    // Enumerate all fan-related keys to detect casing and availability.
+    // This is the test that would have immediately caught the F0Md vs F0md issue.
+    let keysOutput = runCLISync(["keys", "F"])
+    print("=== SMC Fan Keys ===")
+    print(keysOutput.output)
+
+    // Must find at least FNum
+    XCTAssertTrue(keysOutput.output.contains("FNum"), "FNum key must exist")
+
+    // Check which mode key variant exists
+    let hasLowerMode = keysOutput.output.contains("F0md")
+    let hasUpperMode = keysOutput.output.contains("F0Md")
+    print("Mode key: F0md=\(hasLowerMode) F0Md=\(hasUpperMode)")
+    XCTAssertTrue(
+      hasLowerMode || hasUpperMode, "Neither F0md nor F0Md found. Fan mode key missing from SMC.")
+
+    // Check Ftst
+    let allKeysOutput = runCLISync(["keys"])
+    let hasFtst = allKeysOutput.output.contains("Ftst")
+    print("Ftst available: \(hasFtst)")
+
+    // Report hardware config
+    print("=== Hardware Config ===")
+    print("Mode key format: \(hasLowerMode ? "F%dmd (lowercase)" : "F%dMd (uppercase)")")
+    print(
+      "Ftst: \(hasFtst ? "present (unlock sequence available)" : "absent (direct mode writes expected)")"
+    )
+  }
+
+  func testA_SMCReadKeyInfo() throws {
+    // Verify readKeyInfo succeeds for all expected fan keys.
+    // If this fails with SmcNotFound (0x84), the key name is wrong.
+    let expectedKeys = ["FNum", "F0Ac", "F0Tg", "F0Mn", "F0Mx"]
+
+    for key in expectedKeys {
+      let result = runCLISync(["read", key])
+      XCTAssertEqual(
+        result.exitCode, 0,
+        "readKeyInfo(\(key)) failed. exit=\(result.exitCode) output=\(result.output)")
+    }
+
+    // Mode key: try both casings, at least one must work
+    let lowerResult = runCLISync(["read", "F0md"])
+    let upperResult = runCLISync(["read", "F0Md"])
+    let modeReadable = lowerResult.exitCode == 0 || upperResult.exitCode == 0
+    XCTAssertTrue(
+      modeReadable,
+      "Neither F0md nor F0Md readable. Lower: exit=\(lowerResult.exitCode) [\(lowerResult.output.trimmingCharacters(in: .whitespacesAndNewlines))], Upper: exit=\(upperResult.exitCode) [\(upperResult.output.trimmingCharacters(in: .whitespacesAndNewlines))]"
+    )
+  }
+
+  func testA_HardwareDetectionLogs() throws {
+    // Verify the helper logs hardware detection on startup.
+    // The helper output should contain detection results.
+    let result = runCLISync(["list"])
+    XCTAssertEqual(result.exitCode, 0, "list command failed")
+
+    // Check that hardware detection ran and reported
+    let output = result.output
+    let hasDetection = output.contains("detectHardwareKeys") || output.contains("modeKey=")
+    if hasDetection {
+      print("Hardware detection output found in helper logs")
+    } else {
+      print("Note: hardware detection logs not visible in CLI output (check os_log)")
+    }
+
+    // The list output itself validates that reads work
+    XCTAssertTrue(output.contains("Fans:"), "list should show fan count")
+    XCTAssertTrue(output.contains("Min:"), "list should show min RPM")
+    XCTAssertTrue(output.contains("Max:"), "list should show max RPM")
+  }
+
   // MARK: - XPC Connection Tests
 
   func testHelperConnection() throws {
@@ -842,6 +920,23 @@ final class IntegrationTests: XCTestCase {
       .deletingLastPathComponent()
       .deletingLastPathComponent()
     return packageRoot.appendingPathComponent("Products").appendingPathComponent("smcfan").path
+  }
+
+  private func runCLISync(_ args: [String]) -> (output: String, exitCode: Int32) {
+    let process = Process()
+    let pipe = Pipe()
+    process.executableURL = URL(fileURLWithPath: Self.cliPath)
+    process.arguments = args
+    process.standardOutput = pipe
+    process.standardError = pipe
+    do {
+      try process.run()
+      process.waitUntilExit()
+      let data = pipe.fileHandleForReading.readDataToEndOfFile()
+      return (String(data: data, encoding: .utf8) ?? "", process.terminationStatus)
+    } catch {
+      return ("Error: \(error)", 1)
+    }
   }
 
   private func runCLI(_ args: [String], completion: @escaping (String, Int32) -> Void) {

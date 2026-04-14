@@ -35,6 +35,7 @@ class XPCClient {
 
   init() throws {
     let config = SMCFanConfiguration.default
+    Log.debug("connecting to \(config.helperBundleID)")
 
     connection = NSXPCConnection(
       machServiceName: config.helperBundleID,
@@ -44,6 +45,7 @@ class XPCClient {
     connection.exportedInterface = NSXPCInterface(with: SMCFanClientProtocol.self)
     connection.exportedObject = logReceiver
     connection.resume()
+    Log.debug("connection resumed")
 
     guard
       let p = connection.remoteObjectProxyWithErrorHandler({ error in
@@ -51,13 +53,16 @@ class XPCClient {
         exit(1)
       }) as? SMCFanHelperProtocol
     else {
+      Log.debug("failed to create remote object proxy")
       throw SMCXPCError("Failed to create proxy")
     }
 
     proxy = p
+    Log.debug("proxy created successfully")
   }
 
   deinit {
+    Log.debug("invalidating connection")
     connection.invalidate()
   }
 
@@ -94,15 +99,21 @@ class XPCClient {
   // MARK: - SMC Operations
 
   func open() async throws {
+    Log.debug("calling smcOpen")
     try await callVoid { self.proxy.smcOpen(reply: $0) }
+    Log.debug("smcOpen returned OK")
   }
 
   func getFanCount() async throws -> UInt {
-    try await call { self.proxy.smcGetFanCount(reply: $0) }
+    Log.debug("calling smcGetFanCount")
+    let count: UInt = try await call { self.proxy.smcGetFanCount(reply: $0) }
+    Log.debug("returned \(count)")
+    return count
   }
 
   func getFanInfo(_ index: UInt) async throws -> FanInfo {
-    try await withCheckedThrowingContinuation { continuation in
+    Log.debug("calling smcGetFanInfo fan=\(index)")
+    let info: FanInfo = try await withCheckedThrowingContinuation { continuation in
       self.proxy.smcGetFanInfo(index) { success, actual, target, min, max, manual, error in
         if success {
           continuation.resume(
@@ -118,17 +129,39 @@ class XPCClient {
         }
       }
     }
+    Log.debug(
+      "fan=\(index) actual=\(Int(info.actualRPM)) target=\(Int(info.targetRPM)) manual=\(info.manualMode)"
+    )
+    return info
   }
 
   func setFanRPM(_ index: UInt, rpm: Float) async throws {
+    Log.debug("calling smcSetFanRPM fan=\(index) rpm=\(Int(rpm))")
     try await callVoid { self.proxy.smcSetFanRPM(index, rpm: rpm, reply: $0) }
+    Log.debug("fan=\(index) rpm=\(Int(rpm)) OK")
   }
 
   func setFanAuto(_ index: UInt) async throws {
+    Log.debug("calling smcSetFanAuto fan=\(index)")
     try await callVoid { self.proxy.smcSetFanAuto(index, reply: $0) }
+    Log.debug("fan=\(index) OK")
   }
 
   func readKey(_ key: String) async throws -> Float {
-    try await call { self.proxy.smcReadKey(key, reply: $0) }
+    Log.debug("calling smcReadKey key=\(key)")
+    let value: Float = try await call { self.proxy.smcReadKey(key, reply: $0) }
+    Log.debug("key=\(key) value=\(value)")
+    return value
+  }
+
+  func enumerateKeys() async -> [String] {
+    Log.debug("calling smcEnumerateKeys")
+    let keys = await withCheckedContinuation { continuation in
+      proxy.smcEnumerateKeys { keys in
+        continuation.resume(returning: keys)
+      }
+    }
+    Log.debug("returned \(keys.count) keys")
+    return keys
   }
 }
