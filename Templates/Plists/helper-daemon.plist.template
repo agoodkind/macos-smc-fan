@@ -3,17 +3,19 @@
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>@@HELPER_ID@@</string>
+    <string>@@HELPER_BUNDLE_ID@@</string>
+    <key>BundleProgram</key>
+    <string>Contents/MacOS/@@HELPER_BUNDLE_ID@@</string>
     <key>MachServices</key>
     <dict>
-        <key>@@HELPER_ID@@</key>
+        <key>@@HELPER_BUNDLE_ID@@</key>
         <true/>
     </dict>
-    <key>Program</key>
-    <string>/Library/PrivilegedHelperTools/@@HELPER_ID@@</string>
-    <key>ProgramArguments</key>
+    <key>AssociatedBundleIdentifiers</key>
     <array>
-        <string>/Library/PrivilegedHelperTools/@@HELPER_ID@@</string>
+        <string>@@APP_BUNDLE_ID@@</string>
     </array>
+    <key>RunAtLoad</key>
+    <true/>
 </dict>
 </plist>

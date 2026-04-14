@@ -1,0 +1,5 @@
+CODE_SIGN_IDENTITY = Developer ID Application
+DEVELOPMENT_TEAM = H3BMXM4W7H
+BUNDLE_ID_PREFIX = io.goodkind
+HELPER_BUNDLE_ID = io.goodkind.smcfanhelper
+APP_BUNDLE_ID = io.goodkind.SMCFanHelper

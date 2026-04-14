@@ -1,6 +1,6 @@
 //
-//  SMCDataConversion.swift
-//  SMCFan
+//  SMCDataFormat.swift
+//  SMCKit
 //
 //  Created by Alex Goodkind <alex@goodkind.io> on 2026-01-18.
 //  Copyright © 2026
@@ -13,18 +13,20 @@ import Foundation
 /// SMC data format conversion utilities.
 /// Apple Silicon uses IEEE 754 float (little-endian, 4 bytes).
 /// Intel uses fpe2 fixed-point (14.2 format, big-endian, 2 bytes).
-enum SMCDataFormat: Sendable {
+public enum SMCDataFormat: Sendable {
 
-  static func float(from bytes: [UInt8], size: UInt32) -> Float {
-    if size == 4 {
+  public static func float(from bytes: [UInt8], size: UInt32) -> Float {
+    if size == 4, bytes.count >= 4 {
       return bytes.withUnsafeBytes { $0.load(as: Float.self) }
-    } else {
+    } else if bytes.count >= 2 {
       let raw = (UInt16(bytes[0]) << 8) | UInt16(bytes[1])
       return Float(raw) / 4.0
+    } else {
+      return 0
     }
   }
 
-  static func bytes(from value: Float, size: UInt32) -> [UInt8] {
+  public static func bytes(from value: Float, size: UInt32) -> [UInt8] {
     var result = [UInt8](repeating: 0, count: Int(size))
     if size == 4 {
       withUnsafeBytes(of: value) { bytes in

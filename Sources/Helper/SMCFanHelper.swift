@@ -8,15 +8,13 @@
 
 import Foundation
 import IOKit
-
-#if !DIRECT_BUILD
-  import SMCCommon
-#endif
+import SMCKit
+import SMCFanKit
 
 /// XPC service that handles privileged SMC operations
 class SMCFanHelper: NSObject, NSXPCListenerDelegate, SMCFanHelperProtocol, @unchecked Sendable {
   private let listener: NSXPCListener
-  private var connection: SMCConnection?
+  private var fanController: FanController?
 
   override init() {
     let config = SMCFanConfiguration.default
@@ -72,9 +70,10 @@ class SMCFanHelper: NSObject, NSXPCListenerDelegate, SMCFanHelperProtocol, @unch
   // MARK: - Connection Management
 
   private func ensureConnected() throws {
-    if connection == nil {
+    if fanController == nil {
       Log.debug("no existing connection, creating new SMCConnection")
-      connection = try SMCConnection()
+      let conn = try SMCConnection()
+      fanController = try FanController(connection: conn)
       Log.debug("SMCConnection created successfully")
     } else {
       Log.debug("reusing existing SMCConnection")
@@ -96,8 +95,8 @@ class SMCFanHelper: NSObject, NSXPCListenerDelegate, SMCFanHelperProtocol, @unch
   }
 
   func smcClose(reply: @escaping (Bool, String?) -> Void) {
-    Log.debug("ENTER connectionActive=\(connection != nil)")
-    connection = nil
+    Log.debug("ENTER connectionActive=\(fanController != nil)")
+    fanController = nil
     Log.debug("EXIT connection released")
     reply(true, nil)
   }
@@ -106,12 +105,12 @@ class SMCFanHelper: NSObject, NSXPCListenerDelegate, SMCFanHelperProtocol, @unch
     Log.debug("ENTER key=\(key)")
     do {
       try ensureConnected()
-      guard let conn = connection else {
+      guard let fanController = fanController else {
         Log.debug("EXIT no connection")
         reply(false, 0, "Connection not established")
         return
       }
-      let (value, size) = try conn.readKey(key)
+      let (value, size) = try fanController.connection.readKey(key)
       let floatVal = SMCDataFormat.float(from: value, size: size)
       Log.debug("EXIT key=\(key) size=\(size) bytes=\(value) float=\(floatVal)")
       reply(true, floatVal, nil)
@@ -125,15 +124,15 @@ class SMCFanHelper: NSObject, NSXPCListenerDelegate, SMCFanHelperProtocol, @unch
     Log.debug("ENTER key=\(key) value=\(value)")
     do {
       try ensureConnected()
-      guard let conn = connection else {
+      guard let fanController = fanController else {
         Log.debug("EXIT no connection")
         reply(false, "Connection not established")
         return
       }
-      let (_, size) = try conn.readKey(key)
+      let (_, size) = try fanController.connection.readKey(key)
       let writeVal = SMCDataFormat.bytes(from: value, size: size)
       Log.debug("key=\(key) size=\(size) encodedBytes=\(writeVal)")
-      try conn.writeKey(key, bytes: writeVal)
+      try fanController.connection.writeKey(key, bytes: writeVal)
       Log.debug("EXIT key=\(key) OK")
       reply(true, nil)
     } catch {
@@ -146,12 +145,12 @@ class SMCFanHelper: NSObject, NSXPCListenerDelegate, SMCFanHelperProtocol, @unch
     Log.debug("ENTER")
     do {
       try ensureConnected()
-      guard let conn = connection else {
+      guard let fanController = fanController else {
         Log.debug("EXIT no connection")
         reply(false, 0, "Connection not established")
         return
       }
-      let (value, _) = try conn.readKey(SMCFanKey.count)
+      let (value, _) = try fanController.connection.readKey(SMCFanKey.count)
       let count = UInt(value[0])
       Log.debug("EXIT count=\(count)")
       reply(true, count, nil)
@@ -176,11 +175,11 @@ class SMCFanHelper: NSObject, NSXPCListenerDelegate, SMCFanHelperProtocol, @unch
 
       let manualMode: Bool
       do {
-        guard let conn = connection else {
+        guard let fanController = fanController else {
           throw SMCError.notOpen
         }
-        let modeKey = SMCFanKey.key(conn.hwConfig.modeKeyFormat, fan: Int(fanIndex))
-        let (modeValue, _) = try conn.readKey(modeKey)
+        let modeKey = SMCFanKey.key(fanController.config.modeKeyFormat, fan: Int(fanIndex))
+        let (modeValue, _) = try fanController.connection.readKey(modeKey)
         manualMode = modeValue[0] == 1
       } catch {
         Log.debug("failed to read mode key for fan \(fanIndex): \(error)")
@@ -199,12 +198,12 @@ class SMCFanHelper: NSObject, NSXPCListenerDelegate, SMCFanHelperProtocol, @unch
 
   private func readFloat(fanIndex: UInt, keyFormat: String) -> Float? {
     let key = SMCFanKey.key(keyFormat, fan: Int(fanIndex))
-    guard let conn = connection else {
+    guard let fanController = fanController else {
       Log.debug("no connection for key=\(key)")
       return nil
     }
     do {
-      let (value, size) = try conn.readKey(key)
+      let (value, size) = try fanController.connection.readKey(key)
       let result = SMCDataFormat.float(from: value, size: size)
       Log.debug("key=\(key) size=\(size) bytes=\(value) float=\(result)")
       return result
@@ -224,16 +223,16 @@ class SMCFanHelper: NSObject, NSXPCListenerDelegate, SMCFanHelperProtocol, @unch
       return
     }
 
-    guard let conn = connection else {
+    guard let fanController = fanController else {
       Log.debug("EXIT no connection")
       reply(false, "Connection not established")
       return
     }
 
-    let modeKey = SMCFanKey.key(conn.hwConfig.modeKeyFormat, fan: Int(fanIndex))
+    let modeKey = SMCFanKey.key(fanController.config.modeKeyFormat, fan: Int(fanIndex))
     let alreadyManual: Bool
     do {
-      let (modeBytes, _) = try conn.readKey(modeKey)
+      let (modeBytes, _) = try fanController.connection.readKey(modeKey)
       alreadyManual = !modeBytes.isEmpty && modeBytes[0] == 1
     } catch {
       Log.debug("failed to read mode key \(modeKey): \(error)")
@@ -244,7 +243,7 @@ class SMCFanHelper: NSObject, NSXPCListenerDelegate, SMCFanHelperProtocol, @unch
 
     if !alreadyManual {
       do {
-        let strategy = try conn.enableManualMode(fanIndex: Int(fanIndex))
+        let strategy = try fanController.enableManualMode(fanIndex: Int(fanIndex))
         Log.info("enableManualMode: strategy=\(String(describing: strategy)) fan=\(fanIndex)")
       } catch {
         Log.debug("EXIT enableManualMode failed: \(error)")
@@ -260,7 +259,7 @@ class SMCFanHelper: NSObject, NSXPCListenerDelegate, SMCFanHelperProtocol, @unch
     Log.debug("writing target key=\(key) bytes=\(value)")
 
     do {
-      try conn.writeKey(key, bytes: value)
+      try fanController.connection.writeKey(key, bytes: value)
       Log.info("Set fan \(fanIndex) to \(Int(rpm)) RPM")
       Log.debug("EXIT fan=\(fanIndex) rpm=\(Int(rpm)) OK")
       reply(true, nil)
@@ -326,7 +325,7 @@ class SMCFanHelper: NSObject, NSXPCListenerDelegate, SMCFanHelperProtocol, @unch
       return
     }
 
-    guard let conn = connection else {
+    guard let fanController = fanController else {
       Log.debug("EXIT no connection")
       reply(false, "Connection not established")
       return
@@ -334,7 +333,7 @@ class SMCFanHelper: NSObject, NSXPCListenerDelegate, SMCFanHelperProtocol, @unch
 
     let fanCount: Int
     do {
-      let (numBytes, _) = try conn.readKey(SMCFanKey.count)
+      let (numBytes, _) = try fanController.connection.readKey(SMCFanKey.count)
       fanCount = Int(numBytes[0])
       Log.debug("fanCount=\(fanCount)")
     } catch {
@@ -347,9 +346,9 @@ class SMCFanHelper: NSObject, NSXPCListenerDelegate, SMCFanHelperProtocol, @unch
 
     for i in 0..<fanCount {
       if i == Int(fanIndex) { continue }
-      let checkKey = SMCFanKey.key(conn.hwConfig.modeKeyFormat, fan: i)
+      let checkKey = SMCFanKey.key(fanController.config.modeKeyFormat, fan: i)
       do {
-        let (checkBytes, _) = try conn.readKey(checkKey)
+        let (checkBytes, _) = try fanController.connection.readKey(checkKey)
         let isManual = !checkBytes.isEmpty && checkBytes[0] == 1
         Log.debug("fan \(i) mode bytes=\(checkBytes) isManual=\(isManual)")
         if isManual {
@@ -361,10 +360,10 @@ class SMCFanHelper: NSObject, NSXPCListenerDelegate, SMCFanHelperProtocol, @unch
       }
     }
 
-    let modeKey = SMCFanKey.key(conn.hwConfig.modeKeyFormat, fan: Int(fanIndex))
+    let modeKey = SMCFanKey.key(fanController.config.modeKeyFormat, fan: Int(fanIndex))
     Log.debug("writing modeKey=\(modeKey) bytes=[0]")
     do {
-      try conn.writeKey(modeKey, bytes: [0])
+      try fanController.connection.writeKey(modeKey, bytes: [0])
       Log.debug("modeKey write OK")
     } catch {
       Log.warning("Failed to set auto mode: \(error)")
@@ -374,7 +373,7 @@ class SMCFanHelper: NSObject, NSXPCListenerDelegate, SMCFanHelperProtocol, @unch
     let writeVal = SMCDataFormat.bytes(from: 0, size: 4)
     Log.debug("writing targetKey=\(targetKey) bytes=\(writeVal)")
     do {
-      try conn.writeKey(targetKey, bytes: writeVal)
+      try fanController.connection.writeKey(targetKey, bytes: writeVal)
       Log.debug("target write OK")
     } catch {
       Log.warning("Failed to reset target: \(error)")
@@ -383,12 +382,12 @@ class SMCFanHelper: NSObject, NSXPCListenerDelegate, SMCFanHelperProtocol, @unch
     if otherFansManual > 0 {
       Log.info("setFanAuto: fan \(fanIndex) to auto, \(otherFansManual) other fans still manual")
       Log.debug("skipping Ftst reset, \(otherFansManual) other fans still manual")
-    } else if conn.hwConfig.ftstAvailable {
+    } else if fanController.config.ftstAvailable {
       do {
-        let (ftstBytes, _) = try conn.readKey(SMCFanKey.forceTest)
+        let (ftstBytes, _) = try fanController.connection.readKey(SMCFanKey.forceTest)
         Log.debug("current Ftst bytes=\(ftstBytes)")
         if !ftstBytes.isEmpty, ftstBytes[0] == 1 {
-          try conn.resetFanControl()
+          try fanController.resetFanControl()
           Log.info("setFanAuto: Ftst reset succeeded")
         } else {
           Log.debug("Ftst already 0, no reset needed")
@@ -408,12 +407,12 @@ class SMCFanHelper: NSObject, NSXPCListenerDelegate, SMCFanHelperProtocol, @unch
     Log.debug("ENTER")
     do {
       try ensureConnected()
-      guard let conn = connection else {
+      guard let fanController = fanController else {
         Log.debug("EXIT no connection")
         reply([])
         return
       }
-      let keys = conn.enumerateKeys()
+      let keys = fanController.connection.enumerateKeys()
       Log.debug("EXIT found \(keys.count) keys")
       reply(keys)
     } catch {

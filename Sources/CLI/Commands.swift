@@ -7,7 +7,6 @@
 //
 
 import Foundation
-import SMCCommon
 
 /// Shared command implementations used by both ArgumentParser and simple CLI
 enum Commands {

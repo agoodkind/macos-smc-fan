@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
     <key>CFBundleIdentifier</key>
-    <string>@@BUNDLE_ID_PREFIX@@.SMCFanHelper</string>
+    <string>@@APP_BUNDLE_ID@@</string>
     <key>CFBundleExecutable</key>
     <string>SMCFanInstaller</string>
     <key>CFBundlePackageType</key>
@@ -16,8 +16,8 @@
     <string>1.0</string>
     <key>SMPrivilegedExecutables</key>
     <dict>
-        <key>@@HELPER_ID@@</key>
-        <string>anchor apple generic and identifier "@@HELPER_ID@@" and (certificate leaf[field.1.2.840.113635.100.6.1.9] /* exists */ or certificate 1[field.1.2.840.113635.100.6.2.6] /* exists */ and certificate leaf[field.1.2.840.113635.100.6.1.13] /* exists */ and certificate leaf[subject.OU] = @@TEAM_ID@@)</string>
+        <key>@@HELPER_BUNDLE_ID@@</key>
+        <string>anchor apple generic and identifier "@@HELPER_BUNDLE_ID@@" and (certificate leaf[field.1.2.840.113635.100.6.1.9] /* exists */ or certificate 1[field.1.2.840.113635.100.6.2.6] /* exists */ and certificate leaf[field.1.2.840.113635.100.6.1.13] /* exists */ and certificate leaf[subject.OU] = @@DEVELOPMENT_TEAM@@)</string>
     </dict>
 </dict>
 </plist>

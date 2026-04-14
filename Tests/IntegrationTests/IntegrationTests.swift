@@ -913,13 +913,11 @@ final class IntegrationTests: XCTestCase {
   }
 
   private static var cliPath: String {
-    let fileURL = URL(fileURLWithPath: #file)
-    let packageRoot =
-      fileURL
-      .deletingLastPathComponent()
-      .deletingLastPathComponent()
-      .deletingLastPathComponent()
-    return packageRoot.appendingPathComponent("Products").appendingPathComponent("smcfan").path
+    let fileURL = URL(fileURLWithPath: #filePath)
+    let repoRoot = fileURL
+      .deletingLastPathComponent()  // IntegrationTests/
+      .deletingLastPathComponent()  // Tests/
+    return repoRoot.appendingPathComponent("Products").appendingPathComponent("smcfan").path
   }
 
   private func runCLISync(_ args: [String]) -> (output: String, exitCode: Int32) {

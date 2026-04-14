@@ -1,0 +1,9 @@
+// Copy to local.xcconfig and fill in your values
+// Find CERT_ID with: security find-identity -v -p codesigning
+// Find DEVELOPMENT_TEAM at: https://developer.apple.com/account
+
+CODE_SIGN_IDENTITY = Developer ID Application
+DEVELOPMENT_TEAM = YOUR_TEAM_ID
+BUNDLE_ID_PREFIX = com.example
+HELPER_BUNDLE_ID = com.example.smcfanhelper
+APP_BUNDLE_ID = com.example.SMCFanHelper

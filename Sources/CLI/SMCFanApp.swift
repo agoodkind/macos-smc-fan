@@ -7,7 +7,6 @@
 //
 
 import Foundation
-import SMCCommon
 
 @main
 struct SMCFan {

@@ -1,0 +1,134 @@
+name: SMCFanApp
+options:
+  bundleIdPrefix: io.goodkind
+  deploymentTarget:
+    macOS: "10.15"
+  createIntermediateGroups: true
+
+configFiles:
+  Debug: Config/debug.xcconfig
+  Release: Config/release.xcconfig
+
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    MACOSX_DEPLOYMENT_TARGET: "10.15"
+
+packages:
+  SMCFan:
+    path: .
+
+targetTemplates:
+  CommonConfig:
+    preBuildScripts:
+      - script: "${SRCROOT}/Scripts/generate-config.sh"
+        name: "Generate Config from xcconfig"
+        outputFiles:
+          - "$(DERIVED_FILE_DIR)/Generated/Config.generated.swift"
+          - "$(DERIVED_FILE_DIR)/Generated/helper-info.plist"
+          - "$(DERIVED_FILE_DIR)/Generated/helper-launchd.plist"
+          - "$(DERIVED_FILE_DIR)/Generated/helper-daemon.plist"
+          - "$(DERIVED_FILE_DIR)/Generated/App-Info.plist"
+
+targets:
+  SMCFanHelper:
+    type: application
+    platform: macOS
+    templates:
+      - CommonConfig
+    sources:
+      - path: Sources/Installer
+      - path: Sources/Common
+      - path: "${DERIVED_FILE_DIR}/Generated/Config.generated.swift"
+        optional: true
+        buildPhase: sources
+        type: file
+    dependencies:
+      - target: io.goodkind.smcfanhelper
+        embed: false
+      - package: SMCFan
+        product: SMCFanKit
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: $(APP_BUNDLE_ID)
+        PRODUCT_NAME: SMCFanHelper
+        EXECUTABLE_NAME: SMCFanInstaller
+        INFOPLIST_FILE: $(DERIVED_FILE_DIR)/Generated/App-Info.plist
+        CODE_SIGN_STYLE: Manual
+        CODE_SIGN_IDENTITY: $(CODE_SIGN_IDENTITY)
+        DEVELOPMENT_TEAM: $(DEVELOPMENT_TEAM)
+    postCompileScripts:
+      - script: |
+          HELPER_NAME="${HELPER_BUNDLE_ID}"
+          # Copy helper to LaunchServices
+          mkdir -p "${BUILT_PRODUCTS_DIR}/${PRODUCT_NAME}.app/Contents/Library/LaunchServices"
+          cp "${BUILT_PRODUCTS_DIR}/${HELPER_NAME}" \
+            "${BUILT_PRODUCTS_DIR}/${PRODUCT_NAME}.app/Contents/Library/LaunchServices/"
+          # Codesign the copy in LaunchServices
+          codesign -s "${EXPANDED_CODE_SIGN_IDENTITY}" -f --options runtime --timestamp \
+            "${BUILT_PRODUCTS_DIR}/${PRODUCT_NAME}.app/Contents/Library/LaunchServices/${HELPER_NAME}"
+          # Copy helper to MacOS (for SMAppService)
+          cp "${BUILT_PRODUCTS_DIR}/${HELPER_NAME}" \
+            "${BUILT_PRODUCTS_DIR}/${PRODUCT_NAME}.app/Contents/MacOS/"
+          # Copy generated daemon plist for SMAppService
+          mkdir -p "${BUILT_PRODUCTS_DIR}/${PRODUCT_NAME}.app/Contents/Library/LaunchDaemons"
+          cp "${DERIVED_FILE_DIR}/Generated/helper-daemon.plist" \
+            "${BUILT_PRODUCTS_DIR}/${PRODUCT_NAME}.app/Contents/Library/LaunchDaemons/${HELPER_NAME}.plist"
+        name: "Copy Helper and Plists"
+
+  io.goodkind.smcfanhelper:
+    type: tool
+    platform: macOS
+    templates:
+      - CommonConfig
+    sources:
+      - path: Sources/Helper
+      - path: Sources/Common
+      - path: "${DERIVED_FILE_DIR}/Generated/Config.generated.swift"
+        optional: true
+        buildPhase: sources
+        type: file
+    dependencies:
+      - package: SMCFan
+        product: SMCFanKit
+    settings:
+      base:
+        PRODUCT_NAME: $(HELPER_BUNDLE_ID)
+        PRODUCT_BUNDLE_IDENTIFIER: $(HELPER_BUNDLE_ID)
+        CODE_SIGN_STYLE: Manual
+        CODE_SIGN_IDENTITY: $(CODE_SIGN_IDENTITY)
+        DEVELOPMENT_TEAM: $(DEVELOPMENT_TEAM)
+        ENABLE_HARDENED_RUNTIME: true
+        SKIP_INSTALL: true
+        OTHER_LDFLAGS:
+          - "-sectcreate"
+          - "__TEXT"
+          - "__info_plist"
+          - "$(DERIVED_FILE_DIR)/Generated/helper-info.plist"
+          - "-sectcreate"
+          - "__TEXT"
+          - "__launchd_plist"
+          - "$(DERIVED_FILE_DIR)/Generated/helper-launchd.plist"
+
+  smcfan:
+    type: tool
+    platform: macOS
+    templates:
+      - CommonConfig
+    sources:
+      - path: Sources/CLI
+      - path: Sources/Common
+      - path: "${DERIVED_FILE_DIR}/Generated/Config.generated.swift"
+        optional: true
+        buildPhase: sources
+        type: file
+    dependencies:
+      - package: SMCFan
+        product: SMCFanKit
+    settings:
+      base:
+        PRODUCT_NAME: smcfan
+        CODE_SIGN_STYLE: Manual
+        CODE_SIGN_IDENTITY: $(CODE_SIGN_IDENTITY)
+        DEVELOPMENT_TEAM: $(DEVELOPMENT_TEAM)
+        SKIP_INSTALL: true

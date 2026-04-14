@@ -7,7 +7,6 @@
 //
 
 import Foundation
-import SMCCommon
 import Security
 import ServiceManagement
 

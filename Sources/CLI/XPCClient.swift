@@ -7,7 +7,6 @@
 //
 
 import Foundation
-import SMCCommon
 
 /// XPC-related errors
 struct SMCXPCError: LocalizedError, Sendable {
