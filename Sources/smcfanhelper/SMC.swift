@@ -20,64 +20,21 @@ private enum SMCCommand: UInt8 {
   case readKeyInfo = 9
 }
 
-/// Swift-native error type for SMC operations
-enum SMCError: LocalizedError, Sendable {
-  case notOpen
-  case connectionFailed
-  case timeout
-  case ioKit(kern_return_t)
-  case firmware(SMCResultCode)
-
-  var errorDescription: String? {
-    switch self {
-    case .notOpen:
-      return "SMC connection not open"
-    case .connectionFailed:
-      return "Failed to open AppleSMC"
-    case .timeout:
-      return "Operation timed out"
-    case .ioKit(let code):
-      return "IOKit error: 0x\(String(code, radix: 16))"
-    case .firmware(let code):
-      return "SMC firmware error: \(code)"
-    }
-  }
-}
-
 /// SMC firmware result codes (from VirtualSMC SDK - AppleSmc.h)
 /// These are returned in output.result field, distinct from IOKit return values.
-enum SMCResultCode: UInt8, CustomStringConvertible, Sendable {
+enum SMCResultCode: UInt8 {
   case success = 0x00
   case error = 0x01
-  case commCollision = 0x80  // Communication collision
-  case spuriousData = 0x81  // Unexpected data
-  case badCommand = 0x82  // Firmware rejected (e.g., write to F%dMd in Mode 3)
-  case badParameter = 0x83  // Invalid parameter value
-  case notFound = 0x84  // Key does not exist
-  case notReadable = 0x85  // Key is write-only
-  case notWritable = 0x86  // Key is read-only
-  case keySizeMismatch = 0x87  // Data size mismatch
-  case framingError = 0x88  // Protocol framing error
-  case badArgumentError = 0x89  // Bad argument to SMC function
-
-  var description: String {
-    let name =
-      switch self {
-      case .success: "success"
-      case .error: "error"
-      case .commCollision: "commCollision"
-      case .spuriousData: "spuriousData"
-      case .badCommand: "badCommand"
-      case .badParameter: "badParameter"
-      case .notFound: "notFound"
-      case .notReadable: "notReadable"
-      case .notWritable: "notWritable"
-      case .keySizeMismatch: "keySizeMismatch"
-      case .framingError: "framingError"
-      case .badArgumentError: "badArgumentError"
-      }
-    return "\(name) (0x\(String(rawValue, radix: 16)))"
-  }
+  case commCollision = 0x80       // Communication collision
+  case spuriousData = 0x81        // Unexpected data
+  case badCommand = 0x82          // Firmware rejected (e.g., write to F%dMd in Mode 3)
+  case badParameter = 0x83        // Invalid parameter value
+  case notFound = 0x84            // Key does not exist
+  case notReadable = 0x85         // Key is write-only
+  case notWritable = 0x86         // Key is read-only
+  case keySizeMismatch = 0x87     // Data size mismatch
+  case framingError = 0x88        // Protocol framing error
+  case badArgumentError = 0x89    // Bad argument to SMC function
 }
 
 /// Well-known SMC keys for fan control
@@ -146,13 +103,13 @@ private struct SMCParamStruct {
 // MARK: - SMC Interface
 
 /// Interface to Apple's System Management Controller
-final class SMCConnection: @unchecked Sendable {
+final class SMCConnection {
 
   private let connection: io_connect_t
 
   // MARK: Initialization
 
-  init() throws {
+  init?() {
     var iterator: io_iterator_t = 0
     defer { IOObjectRelease(iterator) }
 
@@ -163,18 +120,16 @@ final class SMCConnection: @unchecked Sendable {
         &iterator
       ) == kIOReturnSuccess
     else {
-      throw SMCError.connectionFailed
+      return nil
     }
 
     let service = IOIteratorNext(iterator)
-    guard service != 0 else {
-      throw SMCError.connectionFailed
-    }
+    guard service != 0 else { return nil }
     defer { IOObjectRelease(service) }
 
     var conn: io_connect_t = 0
     guard IOServiceOpen(service, mach_task_self_, 0, &conn) == kIOReturnSuccess else {
-      throw SMCError.connectionFailed
+      return nil
     }
 
     self.connection = conn
@@ -187,69 +142,63 @@ final class SMCConnection: @unchecked Sendable {
   // MARK: Public Interface
 
   /// Read raw bytes from an SMC key
-  func readKey(_ key: String) throws -> (bytes: [UInt8], size: UInt32) {
-    let (param, output) = try fetchKeyInfo(key)
+  func readKey(_ key: String) -> (kern_return_t, [UInt8], UInt32) {
+    var param = SMCParamStruct()
+    var output = SMCParamStruct()
+
+    let result = fetchKeyInfo(key, into: &param, output: &output)
+    guard result == kIOReturnSuccess else { return (result, [], 0) }
 
     let dataSize = output.keyInfo.dataSize
-    var readParam = param
-    readParam.keyInfo.dataSize = dataSize
-    readParam.data8 = SMCCommand.readBytes.rawValue
+    param.keyInfo.dataSize = dataSize
+    param.data8 = SMCCommand.readBytes.rawValue
 
-    let readOutput = try callSMC(input: readParam)
+    let readResult = callSMC(input: &param, output: &output)
+    guard readResult == kIOReturnSuccess else { return (readResult, [], 0) }
 
-    let bytes = withUnsafeBytes(of: readOutput.bytes) {
-      Array($0.prefix(Int(dataSize)))
-    }
-    return (bytes, dataSize)
+    let bytes = withUnsafeBytes(of: output.bytes) { Array($0.prefix(Int(dataSize))) }
+    return (kIOReturnSuccess, bytes, dataSize)
   }
 
   /// Write raw bytes to an SMC key
-  func writeKey(_ key: String, bytes: [UInt8]) throws {
-    let (param, output) = try fetchKeyInfo(key)
+  func writeKey(_ key: String, bytes: [UInt8]) -> kern_return_t {
+    var param = SMCParamStruct()
+    var output = SMCParamStruct()
 
-    var writeParam = param
-    writeParam.data8 = SMCCommand.writeBytes.rawValue
-    writeParam.keyInfo.dataSize = output.keyInfo.dataSize
-    writeParam.bytes = bytesToTuple(bytes)
+    let result = fetchKeyInfo(key, into: &param, output: &output)
+    guard result == kIOReturnSuccess else { return result }
 
-    let writeOutput = try callSMC(input: writeParam)
+    param.data8 = SMCCommand.writeBytes.rawValue
+    param.keyInfo.dataSize = output.keyInfo.dataSize
+    param.bytes = bytesToTuple(bytes)
 
-    if writeOutput.result != SMCResultCode.success.rawValue {
-      guard let resultCode = SMCResultCode(rawValue: writeOutput.result) else {
-        throw SMCError.firmware(.error)
-      }
-      throw SMCError.firmware(resultCode)
-    }
+    let writeResult = callSMC(input: &param, output: &output)
+    guard writeResult == kIOReturnSuccess else { return writeResult }
+
+    // IOKit may return success even when SMC firmware rejects the write
+    return output.result == SMCResultCode.success.rawValue ? kIOReturnSuccess : kIOReturnError
   }
 
   // MARK: Private Helpers
 
   private func fetchKeyInfo(
-    _ key: String
-  ) throws -> (param: SMCParamStruct, output: SMCParamStruct) {
-    var param = SMCParamStruct()
+    _ key: String, into param: inout SMCParamStruct, output: inout SMCParamStruct
+  ) -> kern_return_t {
     param.key = fourCharCode(from: key)
     param.data8 = SMCCommand.readKeyInfo.rawValue
-    let output = try callSMC(input: param)
-    return (param, output)
+    return callSMC(input: &param, output: &output)
   }
 
-  private func callSMC(input: SMCParamStruct) throws -> SMCParamStruct {
-    var inp = input
-    var out = SMCParamStruct()
-    var outSize = MemoryLayout<SMCParamStruct>.stride
-    let result = IOConnectCallStructMethod(
+  private func callSMC(input: inout SMCParamStruct, output: inout SMCParamStruct) -> kern_return_t {
+    var outputSize = MemoryLayout<SMCParamStruct>.stride
+    return IOConnectCallStructMethod(
       connection,
       UInt32(SMCCommand.kernelIndex.rawValue),
-      &inp,
+      &input,
       MemoryLayout<SMCParamStruct>.stride,
-      &out,
-      &outSize
+      &output,
+      &outputSize
     )
-    guard result == kIOReturnSuccess else {
-      throw SMCError.ioKit(result)
-    }
-    return out
   }
 
   private func fourCharCode(from string: String) -> UInt32 {

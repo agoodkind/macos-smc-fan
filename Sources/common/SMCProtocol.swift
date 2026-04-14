@@ -11,7 +11,7 @@ import Foundation
 // MARK: - Types
 
 /// Fan information returned from SMC
-public struct FanInfo: Sendable {
+public struct FanInfo {
   public let actualRPM: Float
   public let targetRPM: Float
   public let minRPM: Float
@@ -88,9 +88,4 @@ public struct FanInfo: Sendable {
     _ fanIndex: UInt,
     reply: @escaping @Sendable (Bool, String?) -> Void
   )
-}
-
-/// XPC protocol for log message forwarding from daemon to CLI
-@objc public protocol SMCFanClientProtocol {
-  func logMessage(_ message: String)
 }
