@@ -4,7 +4,7 @@ CONFIGURATION = Release
 BUILD_DIR = build
 PRODUCTS_DIR = Products
 
-.PHONY: all clean install uninstall-helper generate-project test format
+.PHONY: all clean install uninstall-helper generate-project test test-integration format
 
 generate-project:
 	xcodegen generate
@@ -47,6 +47,10 @@ uninstall-helper:
 
 test:
 	swift test
+
+test-integration: all
+	swift build --build-tests
+	sudo swift test --skip-build --filter IntegrationTests
 
 format:
 	swift-format format --in-place --recursive Sources/
