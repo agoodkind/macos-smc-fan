@@ -14,9 +14,9 @@ import IOKit
 #endif
 
 /// XPC service that handles privileged SMC operations
-class SMCFanHelper: NSObject, NSXPCListenerDelegate, SMCFanHelperProtocol {
+class SMCFanHelper: NSObject, NSXPCListenerDelegate, SMCFanHelperProtocol, @unchecked Sendable {
   private let listener: NSXPCListener
-  private var smcConnection: io_connect_t = 0
+  private var connection: SMCConnection?
 
   override init() {
     let config = SMCFanConfiguration.default
@@ -27,7 +27,7 @@ class SMCFanHelper: NSObject, NSXPCListenerDelegate, SMCFanHelperProtocol {
 
   func start() {
     listener.resume()
-    NSLog("SMCFanHelper: Service started")
+    Log.info("Service started")
     RunLoop.current.run()
   }
 
@@ -39,14 +39,20 @@ class SMCFanHelper: NSObject, NSXPCListenerDelegate, SMCFanHelperProtocol {
   ) -> Bool {
     newConnection.exportedInterface = NSXPCInterface(with: SMCFanHelperProtocol.self)
     newConnection.exportedObject = self
-    newConnection.remoteObjectInterface = NSXPCInterface(with: NSObjectProtocol.self)
+    newConnection.remoteObjectInterface = NSXPCInterface(with: SMCFanClientProtocol.self)
+
+    if let client = newConnection.remoteObjectProxy as? SMCFanClientProtocol {
+      Log.setXPCSink(client)
+    }
 
     newConnection.invalidationHandler = {
-      NSLog("SMCFanHelper: Connection invalidated")
+      Log.setXPCSink(nil)
+      Log.notice("Connection invalidated")
     }
 
     newConnection.interruptionHandler = {
-      NSLog("SMCFanHelper: Connection interrupted")
+      Log.setXPCSink(nil)
+      Log.notice("Connection interrupted")
     }
 
     newConnection.resume()
@@ -55,38 +61,17 @@ class SMCFanHelper: NSObject, NSXPCListenerDelegate, SMCFanHelperProtocol {
 
   // MARK: - Connection Management
 
-  private func ensureSMCConnection() throws {
-    if smcConnection != 0 {
-      let (result, _, _) = smcRead(smcConnection, key: SMCFanKey.count)
-      if result == kIOReturnSuccess {
-        return
-      }
-
-      NSLog("SMCFanHelper: Connection stale (0x%x), reopening", result)
-      IOServiceClose(smcConnection)
-      smcConnection = 0
+  private func ensureConnected() throws {
+    if connection == nil {
+      connection = try SMCConnection()
     }
-
-    let (conn, result) = smcOpenConnection()
-    guard result == kIOReturnSuccess else {
-      throw NSError(
-        domain: "SMCError",
-        code: Int(result),
-        userInfo: [
-          NSLocalizedDescriptionKey:
-            "Failed to open SMC: 0x\(String(result, radix: 16))"
-        ]
-      )
-    }
-
-    smcConnection = conn
   }
 
   // MARK: - SMCFanHelperProtocol
 
   func smcOpen(reply: @escaping (Bool, String?) -> Void) {
     do {
-      try ensureSMCConnection()
+      try ensureConnected()
       reply(true, nil)
     } catch {
       reply(false, error.localizedDescription)
@@ -94,68 +79,51 @@ class SMCFanHelper: NSObject, NSXPCListenerDelegate, SMCFanHelperProtocol {
   }
 
   func smcClose(reply: @escaping (Bool, String?) -> Void) {
-    if smcConnection != 0 {
-      IOServiceClose(smcConnection)
-      smcConnection = 0
-    }
+    connection = nil
     reply(true, nil)
   }
 
   func smcReadKey(_ key: String, reply: @escaping (Bool, Float, String?) -> Void) {
     do {
-      try ensureSMCConnection()
+      try ensureConnected()
+      guard let conn = connection else {
+        reply(false, 0, "Connection not established")
+        return
+      }
+      let (value, size) = try conn.readKey(key)
+      reply(true, SMCDataFormat.float(from: value, size: size), nil)
     } catch {
       reply(false, 0, error.localizedDescription)
-      return
-    }
-
-    let (result, value, size) = smcRead(smcConnection, key: key)
-
-    if result == kIOReturnSuccess {
-      reply(true, bytesToFloat(value, size: size), nil)
-    } else {
-      reply(false, 0, "Failed to read key \(key): 0x\(String(result, radix: 16))")
     }
   }
 
   func smcWriteKey(_ key: String, value: Float, reply: @escaping (Bool, String?) -> Void) {
     do {
-      try ensureSMCConnection()
+      try ensureConnected()
+      guard let conn = connection else {
+        reply(false, "Connection not established")
+        return
+      }
+      let (_, size) = try conn.readKey(key)
+      let writeVal = SMCDataFormat.bytes(from: value, size: size)
+      try conn.writeKey(key, bytes: writeVal)
+      reply(true, nil)
     } catch {
       reply(false, error.localizedDescription)
-      return
-    }
-
-    let (readResult, _, size) = smcRead(smcConnection, key: key)
-    guard readResult == kIOReturnSuccess else {
-      reply(false, "Failed to read key info: 0x\(String(readResult, radix: 16))")
-      return
-    }
-
-    let writeVal = floatToBytes(value, size: size)
-    let writeResult = smcWrite(smcConnection, key: key, value: writeVal, size: size)
-
-    if writeResult == kIOReturnSuccess {
-      reply(true, nil)
-    } else {
-      reply(false, "Failed to write key: 0x\(String(writeResult, radix: 16))")
     }
   }
 
   func smcGetFanCount(reply: @escaping (Bool, UInt, String?) -> Void) {
     do {
-      try ensureSMCConnection()
+      try ensureConnected()
+      guard let conn = connection else {
+        reply(false, 0, "Connection not established")
+        return
+      }
+      let (value, _) = try conn.readKey(SMCFanKey.count)
+      reply(true, UInt(value[0]), nil)
     } catch {
       reply(false, 0, error.localizedDescription)
-      return
-    }
-
-    let (result, value, _) = smcRead(smcConnection, key: SMCFanKey.count)
-
-    if result == kIOReturnSuccess {
-      reply(true, UInt(value[0]), nil)
-    } else {
-      reply(false, 0, "Failed to read fan count: 0x\(String(result, radix: 16))")
     }
   }
 
@@ -164,70 +132,93 @@ class SMCFanHelper: NSObject, NSXPCListenerDelegate, SMCFanHelperProtocol {
     reply: @escaping (Bool, Float, Float, Float, Float, Bool, String?) -> Void
   ) {
     do {
-      try ensureSMCConnection()
+      try ensureConnected()
+
+      let actualRPM = readFloat(fanIndex: fanIndex, keyFormat: SMCFanKey.actual) ?? 0
+      let targetRPM = readFloat(fanIndex: fanIndex, keyFormat: SMCFanKey.target) ?? 0
+      let minRPM = readFloat(fanIndex: fanIndex, keyFormat: SMCFanKey.minimum) ?? 0
+      let maxRPM = readFloat(fanIndex: fanIndex, keyFormat: SMCFanKey.maximum) ?? 0
+
+      let modeKey = SMCFanKey.key(SMCFanKey.mode, fan: Int(fanIndex))
+      let manualMode: Bool
+      do {
+        guard let conn = connection else {
+          throw SMCError.notOpen
+        }
+        let (modeValue, _) = try conn.readKey(modeKey)
+        manualMode = modeValue[0] == 1
+      } catch {
+        manualMode = false
+      }
+
+      reply(true, actualRPM, targetRPM, minRPM, maxRPM, manualMode, nil)
     } catch {
       reply(false, 0, 0, 0, 0, false, error.localizedDescription)
-      return
     }
-
-    let actualRPM = readFloat(fanIndex: fanIndex, keyFormat: SMCFanKey.actual) ?? 0
-    let targetRPM = readFloat(fanIndex: fanIndex, keyFormat: SMCFanKey.target) ?? 0
-    let minRPM = readFloat(fanIndex: fanIndex, keyFormat: SMCFanKey.minimum) ?? 0
-    let maxRPM = readFloat(fanIndex: fanIndex, keyFormat: SMCFanKey.maximum) ?? 0
-
-    let modeKey = String(format: SMCFanKey.mode, Int(fanIndex))
-    let (modeResult, modeValue, _) = smcRead(smcConnection, key: modeKey)
-    let manualMode = (modeResult == kIOReturnSuccess && modeValue[0] == 1)
-
-    reply(true, actualRPM, targetRPM, minRPM, maxRPM, manualMode, nil)
   }
 
   private func readFloat(fanIndex: UInt, keyFormat: String) -> Float? {
-    let key = String(format: keyFormat, Int(fanIndex))
-    let (result, value, size) = smcRead(smcConnection, key: key)
-    guard result == kIOReturnSuccess else { return nil }
-    return bytesToFloat(value, size: size)
+    let key = SMCFanKey.key(keyFormat, fan: Int(fanIndex))
+    guard let conn = connection else { return nil }
+    do {
+      let (value, size) = try conn.readKey(key)
+      return SMCDataFormat.float(from: value, size: size)
+    } catch {
+      return nil
+    }
   }
 
   func smcSetFanRPM(_ fanIndex: UInt, rpm: Float, reply: @escaping (Bool, String?) -> Void) {
     do {
-      try ensureSMCConnection()
+      try ensureConnected()
     } catch {
       reply(false, error.localizedDescription)
       return
     }
 
-    // Check if fan is already in manual mode (mode == 1)
-    let modeKey = String(format: SMCFanKey.mode, Int(fanIndex))
-    let (modeResult, modeBytes, _) = smcRead(smcConnection, key: modeKey)
-    let alreadyManual = (modeResult == kIOReturnSuccess && !modeBytes.isEmpty && modeBytes[0] == 1)
+    guard let conn = connection else {
+      reply(false, "Connection not established")
+      return
+    }
+
+    let modeKey = SMCFanKey.key(SMCFanKey.mode, fan: Int(fanIndex))
+    let alreadyManual: Bool
+    do {
+      let (modeBytes, _) = try conn.readKey(modeKey)
+      alreadyManual = !modeBytes.isEmpty && modeBytes[0] == 1
+    } catch {
+      alreadyManual = false
+    }
+
+    Log.debug("setFanRPM: fan=\(fanIndex) rpm=\(Int(rpm)) alreadyManual=\(alreadyManual)")
 
     if !alreadyManual {
-      // Unlock fan control for this specific fan (required for Apple Silicon)
-      // This also sets the fan to manual mode
-      let unlockResult = smcUnlockFanControl(smcConnection, fanIndex: Int(fanIndex))
-      guard unlockResult == kIOReturnSuccess else {
-        reply(false, "Failed to unlock: 0x\(String(unlockResult, radix: 16))")
+      do {
+        let strategy = try conn.enableManualMode(fanIndex: Int(fanIndex))
+        Log.info("enableManualMode: strategy=\(String(describing: strategy)) fan=\(fanIndex)")
+      } catch {
+        reply(false, error.localizedDescription)
         return
       }
     }
 
-    // Set target RPM
-    let key = String(format: SMCFanKey.target, Int(fanIndex))
-    let value = floatToBytes(rpm, size: 4)
-    let writeResult = smcWrite(smcConnection, key: key, value: value, size: 4)
+    let key = SMCFanKey.key(SMCFanKey.target, fan: Int(fanIndex))
+    let value = SMCDataFormat.bytes(from: rpm, size: 4)
 
-    guard writeResult == kIOReturnSuccess else {
-      reply(false, "Failed to set RPM: 0x\(String(writeResult, radix: 16))")
-      return
-    }
+    do {
+      try conn.writeKey(key, bytes: value)
+      Log.info("Set fan \(fanIndex) to \(Int(rpm)) RPM")
+      reply(true, nil)
 
-    NSLog("SMCFanHelper: Set fan %lu to %.0f RPM", fanIndex, rpm)
-    reply(true, nil)
-
-    // Background verification: log when fan actually reaches target
-    Task.detached { [weak self] in
-      await self?.verifyFanSpeed(fanIndex: fanIndex, targetRPM: rpm)
+      let capturedFanIndex = fanIndex
+      let capturedRPM = rpm
+      Task.detached { [weak self] in
+        await self?.verifyFanSpeed(
+          fanIndex: capturedFanIndex, targetRPM: capturedRPM
+        )
+      }
+    } catch {
+      reply(false, error.localizedDescription)
     }
   }
 
@@ -249,9 +240,8 @@ class SMCFanHelper: NSObject, NSXPCListenerDelegate, SMCFanHelperProtocol {
       let diff = abs(actualRPM - targetRPM) / max(targetRPM, 1)
       if diff <= tolerance {
         let elapsed = Date().timeIntervalSince(startTime)
-        NSLog(
-          "SMCFanHelper: Fan %lu reached %.0f RPM (target: %.0f) after %.1fs",
-          fanIndex, actualRPM, targetRPM, elapsed
+        Log.info(
+          "Fan \(fanIndex) reached \(Int(actualRPM)) RPM (target: \(Int(targetRPM))) after \(String(format: "%.1f", elapsed))s"
         )
         return
       }
@@ -260,61 +250,86 @@ class SMCFanHelper: NSObject, NSXPCListenerDelegate, SMCFanHelperProtocol {
     }
 
     if let actualRPM = readFloat(fanIndex: fanIndex, keyFormat: SMCFanKey.actual) {
-      NSLog(
-        "SMCFanHelper: Fan %lu at %.0f RPM after 30s (target was %.0f)",
-        fanIndex, actualRPM, targetRPM
-      )
+      Log.warning(
+        "Fan \(fanIndex) at \(Int(actualRPM)) RPM after 30s (target was \(Int(targetRPM)))")
     }
   }
 
   func smcSetFanAuto(_ fanIndex: UInt, reply: @escaping (Bool, String?) -> Void) {
     do {
-      try ensureSMCConnection()
+      try ensureConnected()
     } catch {
       reply(false, error.localizedDescription)
       return
     }
 
-    // Check how many OTHER fans are currently in manual mode (mode == 1)
-    let (numResult, numBytes, _) = smcRead(smcConnection, key: SMCFanKey.count)
-    guard numResult == kIOReturnSuccess, !numBytes.isEmpty else {
+    guard let conn = connection else {
+      reply(false, "Connection not established")
+      return
+    }
+
+    let fanCount: Int
+    do {
+      let (numBytes, _) = try conn.readKey(SMCFanKey.count)
+      fanCount = Int(numBytes[0])
+    } catch {
       reply(false, "Failed to read fan count")
       return
     }
 
-    let fanCount = Int(numBytes[0])
     var otherFansManual = 0
 
     for i in 0..<fanCount {
-      if i == Int(fanIndex) { continue }  // Skip the fan we're setting to auto
-      let checkKey = String(format: SMCFanKey.mode, i)
-      let (_, checkBytes, _) = smcRead(smcConnection, key: checkKey)
-      if !checkBytes.isEmpty, checkBytes[0] == 1 {
-        otherFansManual += 1
+      if i == Int(fanIndex) { continue }
+      let checkKey = SMCFanKey.key(SMCFanKey.mode, fan: i)
+      do {
+        let (checkBytes, _) = try conn.readKey(checkKey)
+        if !checkBytes.isEmpty, checkBytes[0] == 1 {
+          otherFansManual += 1
+        }
+      } catch {
+        continue
       }
     }
 
-    // Set this fan's mode and target regardless
-    let modeKey = String(format: SMCFanKey.mode, Int(fanIndex))
-    let modeResult = smcWrite(smcConnection, key: modeKey, value: [0], size: 1)
-    if modeResult != kIOReturnSuccess {
-      NSLog("SMCFanHelper: Warning - failed to set auto mode: 0x%x", modeResult)
+    let modeKey = SMCFanKey.key(SMCFanKey.mode, fan: Int(fanIndex))
+    do {
+      try conn.writeKey(modeKey, bytes: [0])
+    } catch {
+      Log.warning("Failed to set auto mode: \(error)")
     }
 
-    let targetKey = String(format: SMCFanKey.target, Int(fanIndex))
-    let writeVal = floatToBytes(0, size: 4)
-    _ = smcWrite(smcConnection, key: targetKey, value: writeVal, size: 4)
+    let targetKey = SMCFanKey.key(SMCFanKey.target, fan: Int(fanIndex))
+    let writeVal = SMCDataFormat.bytes(from: 0, size: 4)
+    do {
+      try conn.writeKey(targetKey, bytes: writeVal)
+    } catch {
+      Log.warning("Failed to reset target: \(error)")
+    }
 
     if otherFansManual > 0 {
-      NSLog("SMCFanHelper: Set fan %lu to auto, other fans still manual", fanIndex)
+      Log.info("setFanAuto: fan \(fanIndex) to auto, \(otherFansManual) other fans still manual")
     } else {
-      // This is the last manual fan - reset Ftst to return full control to thermalmonitord
-      // This allows the system to transition mode from 0 -> 3 (system mode) and spin down to 0 RPM
-      let resetResult = smcWrite(smcConnection, key: SMCFanKey.forceTest, value: [0], size: 1)
-      if resetResult != kIOReturnSuccess {
-        NSLog("SMCFanHelper: Warning - failed to reset Ftst: 0x%x", resetResult)
+      let ftstActive: Bool
+      do {
+        let (ftstBytes, _) = try conn.readKey(SMCFanKey.forceTest)
+        ftstActive = !ftstBytes.isEmpty && ftstBytes[0] == 1
+      } catch {
+        ftstActive = false
       }
-      NSLog("SMCFanHelper: Reset Ftst, returning full control to thermalmonitord")
+
+      Log.info("setFanAuto: last fan, ftstActive=\(ftstActive)")
+
+      if ftstActive {
+        do {
+          try conn.resetFanControl()
+          Log.info("Ftst reset succeeded")
+        } catch {
+          Log.warning("Ftst reset failed: \(error)")
+        }
+      } else {
+        Log.info("All fans auto, direct mode, no Ftst to reset")
+      }
     }
 
     reply(true, nil)

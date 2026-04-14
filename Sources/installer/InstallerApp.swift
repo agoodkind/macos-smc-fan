@@ -23,19 +23,18 @@ struct SMCFanInstaller {
         print("Bundle path: \(Bundle.main.bundlePath)")
         print("Bundle ID: \(Bundle.main.bundleIdentifier ?? "nil")")
         print("Looking for plist: \(plistName)")
-        let daemonPlistPath = Bundle.main.bundlePath +
-          "/Contents/Library/LaunchDaemons/\(plistName)"
+        let daemonPlistPath =
+          Bundle.main.bundlePath + "/Contents/Library/LaunchDaemons/\(plistName)"
         print("Expected path: \(daemonPlistPath)")
         print("File exists: \(FileManager.default.fileExists(atPath: daemonPlistPath))")
-        let helperPath = Bundle.main.bundlePath +
-          "/Contents/MacOS/\(config.helperBundleID)"
+        let helperPath = Bundle.main.bundlePath + "/Contents/MacOS/\(config.helperBundleID)"
         print("Helper path: \(helperPath)")
         print("Helper exists: \(FileManager.default.fileExists(atPath: helperPath))")
-        
+
         let service = SMAppService.daemon(plistName: plistName)
         let status = service.status
         print("Current status: \(status)")
-        
+
         switch status {
         case .enabled:
           print("Helper already installed and running.")
@@ -52,7 +51,7 @@ struct SMCFanInstaller {
         @unknown default:
           print("Unknown status, attempting registration...")
         }
-        
+
         do {
           try service.register()
         } catch {
@@ -60,13 +59,13 @@ struct SMCFanInstaller {
           print("Opening System Settings for manual approval...")
           SMAppService.openSystemSettingsLoginItems()
         }
-        
+
         print("Waiting for approval... Please enable SMCFanHelper in System Settings.")
         while service.status != .enabled {
           print("Current status: \(service.status). Waiting...")
           sleep(1)
         }
-        
+
         print("Helper installed and enabled!")
       } catch {
         print("Error: \(error.localizedDescription)")

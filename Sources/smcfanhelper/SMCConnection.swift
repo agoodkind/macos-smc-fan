@@ -2,83 +2,110 @@
 //  SMCConnection.swift
 //  SMCFanHelper
 //
-//  Functional API wrapper for SMC operations and fan control unlock.
+//  High-level SMC fan control operations.
 //
 //  Created by Alex Goodkind on 2026-01-18.
 //
 
 import Foundation
 
-// MARK: - Shared Connection
+#if !DIRECT_BUILD
+  import SMCCommon
+#endif
 
-private var sharedConnection: SMCConnection?
+// MARK: - Fan Control Strategy
 
-/// Opens connection to AppleSMC. Returns dummy handle for compatibility.
-func smcOpenConnection() -> (io_connect_t, kern_return_t) {
-  if sharedConnection == nil {
-    sharedConnection = SMCConnection()
-  }
-  let success = sharedConnection != nil
-  return (success ? 1 : 0, success ? kIOReturnSuccess : kIOReturnError)
+enum FanControlStrategy: Sendable {
+  case direct
+  case ftstUnlock
 }
 
-/// Closes SMC connection
-func smcCloseConnection() {
-  sharedConnection = nil
-}
+// MARK: - SMCConnection Extensions
 
-/// Reads raw bytes from SMC key
-func smcRead(_: io_connect_t, key: String) -> (kern_return_t, [UInt8], UInt32) {
-  guard let smc = sharedConnection else {
-    return (kIOReturnNotOpen, [], 0)
-  }
-  return smc.readKey(key)
-}
+extension SMCConnection {
 
-/// Writes raw bytes to SMC key
-func smcWrite(_: io_connect_t, key: String, value: [UInt8], size: UInt32) -> kern_return_t {
-  guard let smc = sharedConnection else {
-    return kIOReturnNotOpen
-  }
-  let bytes = Array(value.prefix(Int(size)))
-  return smc.writeKey(key, bytes: bytes)
-}
+  func enableManualMode(fanIndex: Int) throws -> FanControlStrategy {
+    let (ftstBytes, _) = try readKey(SMCFanKey.forceTest)
+    let ftstValue = ftstBytes.first ?? 0
 
-// MARK: - Fan Control
+    Log.connectionInfo("enableManualMode: fan=\(fanIndex) ftst=\(ftstValue)")
 
-/// Unlocks fan control by writing Ftst=1 and retrying mode write.
-/// Bypasses thermalmonitord's Mode 3 enforcement on Apple Silicon.
-func smcUnlockFanControl(
-  _ conn: io_connect_t,
-  fanIndex: Int = 0,
-  maxRetries: Int = 100,
-  timeout: TimeInterval = 10.0
-) -> kern_return_t {
-  var result = smcWrite(conn, key: SMCFanKey.forceTest, value: [1], size: 1)
-  guard result == kIOReturnSuccess else { return result }
-
-  Thread.sleep(forTimeInterval: 0.5)
-
-  let modeKey = SMCFanKey.key(SMCFanKey.mode, fan: fanIndex)
-  let deadline = Date().addingTimeInterval(timeout)
-
-  for _ in 0..<maxRetries {
-    result = smcWrite(conn, key: modeKey, value: [1], size: 1)
-    if result == kIOReturnSuccess {
-      return kIOReturnSuccess
+    if ftstValue == 1 {
+      Log.connectionInfo("Ftst active, using unlock path for fan \(fanIndex)")
+      try unlockFanControlSync(fanIndex: fanIndex)
+      Log.connectionNotice("Ftst unlock succeeded for fan \(fanIndex)")
+      return .ftstUnlock
     }
 
-    if Date() >= deadline {
-      return kIOReturnTimeout
-    }
+    let modeKey = SMCFanKey.key(SMCFanKey.mode, fan: fanIndex)
 
-    Thread.sleep(forTimeInterval: 0.1)
+    do {
+      try writeKey(modeKey, bytes: [1])
+      Log.connectionInfo("Direct write \(modeKey)=1 succeeded for fan \(fanIndex)")
+      return .direct
+    } catch {
+      Log.connectionInfo("Direct failed, falling back to Ftst for fan \(fanIndex)")
+      try unlockFanControlSync(fanIndex: fanIndex)
+      Log.connectionNotice("Ftst unlock succeeded for fan \(fanIndex)")
+      return .ftstUnlock
+    }
   }
 
-  return kIOReturnTimeout
-}
+  func unlockFanControlSync(
+    fanIndex: Int = 0,
+    maxRetries: Int = 100,
+    timeout: TimeInterval = 10.0
+  ) throws {
+    try writeKey(SMCFanKey.forceTest, bytes: [1])
 
-/// Resets fan control by writing Ftst=0, returning control to thermalmonitord
-func smcResetFanControl(_ conn: io_connect_t) -> kern_return_t {
-  smcWrite(conn, key: SMCFanKey.forceTest, value: [0], size: 1)
+    Thread.sleep(forTimeInterval: 0.5)
+
+    let modeKey = SMCFanKey.key(SMCFanKey.mode, fan: fanIndex)
+    let deadline = Date().addingTimeInterval(timeout)
+
+    for _ in 0..<maxRetries {
+      do {
+        try writeKey(modeKey, bytes: [1])
+        return
+      } catch {
+        if Date() >= deadline {
+          throw SMCError.timeout
+        }
+        Thread.sleep(forTimeInterval: 0.1)
+      }
+    }
+
+    throw SMCError.timeout
+  }
+
+  func unlockFanControl(
+    fanIndex: Int = 0,
+    maxRetries: Int = 100,
+    timeout: TimeInterval = 10.0
+  ) async throws {
+    try writeKey(SMCFanKey.forceTest, bytes: [1])
+
+    try await Task.sleep(for: .milliseconds(500))
+
+    let modeKey = SMCFanKey.key(SMCFanKey.mode, fan: fanIndex)
+    let deadline = Date().addingTimeInterval(timeout)
+
+    for _ in 0..<maxRetries {
+      do {
+        try writeKey(modeKey, bytes: [1])
+        return
+      } catch {
+        if Date() >= deadline {
+          throw SMCError.timeout
+        }
+        try await Task.sleep(for: .milliseconds(100))
+      }
+    }
+
+    throw SMCError.timeout
+  }
+
+  func resetFanControl() throws {
+    try writeKey(SMCFanKey.forceTest, bytes: [0])
+  }
 }

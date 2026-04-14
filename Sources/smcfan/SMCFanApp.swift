@@ -7,6 +7,7 @@
 //
 
 import Foundation
+import SMCCommon
 
 @main
 struct SMCFan {
@@ -58,7 +59,7 @@ struct SMCFan {
         exit(1)
       }
     } catch {
-      print("Error: \(error.localizedDescription)")
+      Log.error(error.localizedDescription)
       exit(1)
     }
   }
