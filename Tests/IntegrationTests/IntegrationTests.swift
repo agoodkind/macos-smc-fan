@@ -879,32 +879,57 @@ final class IntegrationTests: XCTestCase {
 
   // MARK: - Transition Helper
 
-  /// Poll until fan state stabilizes (3 consecutive identical readings)
+  /// Poll until fan RPMs stabilize within tolerance (3 consecutive readings within 50 RPM).
+  /// Compares mode and RPM values rather than exact string output, since RPM fluctuates
+  /// by ~10-20 RPM per reading at steady state.
   private func waitForStateStable(maxPolls: Int = 30, pollInterval: TimeInterval = 0.5) {
-    var previousState = ""
+    var previousRPMs: [Int] = []
+    var previousModes: [String] = []
     var stableCount = 0
+    let tolerance = 50
 
     for _ in 0..<maxPolls {
       Thread.sleep(forTimeInterval: pollInterval)
 
       let semaphore = DispatchSemaphore(value: 0)
-      var currentState = ""
+      var currentRPMs: [Int] = []
+      var currentModes: [String] = []
 
       runCLI(["list"]) { output, _ in
-        currentState = output
+        for line in output.components(separatedBy: "\n") {
+          if let match = line.range(of: "Fan \\d+: (\\d+) RPM", options: .regularExpression) {
+            let rpmStr = String(line[match])
+              .replacingOccurrences(of: "Fan ", with: "")
+              .components(separatedBy: ":")[1]
+              .trimmingCharacters(in: .whitespaces)
+              .replacingOccurrences(of: " RPM", with: "")
+            currentRPMs.append(Int(rpmStr) ?? 0)
+          }
+          if line.contains("Mode: Manual") {
+            currentModes.append("Manual")
+          } else if line.contains("Mode: Auto") {
+            currentModes.append("Auto")
+          }
+        }
         semaphore.signal()
       }
       semaphore.wait()
 
-      if currentState == previousState {
+      let modesMatch = currentModes == previousModes
+      let rpmsClose = currentRPMs.count == previousRPMs.count
+        && zip(currentRPMs, previousRPMs).allSatisfy { abs($0 - $1) <= tolerance }
+
+      if modesMatch && rpmsClose {
         stableCount += 1
         if stableCount >= 3 {
           return
         }
       } else {
         stableCount = 0
-        previousState = currentState
       }
+
+      previousRPMs = currentRPMs
+      previousModes = currentModes
     }
   }
 

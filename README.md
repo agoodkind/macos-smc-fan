@@ -229,7 +229,7 @@ The project is implemented entirely in **Swift**. Low-level SMC communication (`
 
 #### Fan Control Unlock Logic
 
-The unlock sequence is implemented in `smcUnlockFanControl()` (see `Sources/smcfanhelper/SMCConnection.swift`). It uses a 100ms retry interval and a 10 second timeout to wait for `thermalmonitord` to yield control after the `Ftst=1` toggle.
+The unlock sequence is implemented in `FanController.unlockFanControlSync()` (see `Sources/SMCFanKit/FanControl.swift`). It uses a 100ms retry interval and a 10 second timeout to wait for `thermalmonitord` to yield control after the `Ftst=1` toggle.
 
 **Mechanism Details**: Analysis of the decompiled `thermalmonitord` binary reveals that `Ftst=1` inhibits the daemon's `LifetimeServoController` from sending temperature targets to `AppleCLPC` (Closed Loop Power Controller). The daemon's main polling loop continues running but its reclaim logic is suppressed while `Ftst` remains set. The unlock succeeds because `AppleCLPC` checks the `Ftst` flag in firmware before enforcing Mode 3.
 
@@ -334,7 +334,7 @@ typedef struct {
 
 **Critical:** Field alignment must be exact. `keyInfo.dataSize` at offset 28, `data8` at offset 42.
 
-> **Swift Struct Compatibility Note**: Despite initial concerns about Swift struct padding differing from C, testing with `MemoryLayout.offset` confirms that Swift correctly places all fields at the expected kernel ABI offsets. The nested `keyInfo_t` struct has `size=9` but `stride=12`, and Swift's layout engine properly accounts for this when computing parent struct offsets. This means pure Swift implementations can work without C bridging code (see `Sources/smcfanhelper/SMC.swift` for an example). The key is using `MemoryLayout<SMCKeyData_t>.stride` (not `.size`) when calling `IOConnectCallStructMethod`.
+> **Swift Struct Compatibility Note**: Despite initial concerns about Swift struct padding differing from C, testing with `MemoryLayout.offset` confirms that Swift correctly places all fields at the expected kernel ABI offsets. The nested `keyInfo_t` struct has `size=9` but `stride=12`, and Swift's layout engine properly accounts for this when computing parent struct offsets. This means pure Swift implementations can work without C bridging code (see `Sources/SMCKit/SMCTypes.swift` and `Sources/SMCKit/SMCConnection.swift` for the implementation). The key is using `MemoryLayout<SMCKeyData_t>.stride` (not `.size`) when calling `IOConnectCallStructMethod`.
 
 ### Debugging
 
@@ -512,12 +512,17 @@ Implementations requiring persistent manual control must maintain `Ftst=1` state
 Copy the example config and customize with your credentials:
 
 ```bash
-cp config.mk.example config.mk
-# Edit config.mk with your values:
-#   CERT_ID - Your Developer ID certificate (find with: security find-identity -v -p codesigning)
-#   TEAM_ID - Your Apple Team ID
+cp Config/local.xcconfig.example Config/local.xcconfig
+# Edit Config/local.xcconfig with your values:
+#   CODE_SIGN_IDENTITY - Your Developer ID certificate
+#   DEVELOPMENT_TEAM - Your Apple Team ID
 #   BUNDLE_ID_PREFIX - Your bundle identifier prefix (e.g., com.yourname)
+#   HELPER_BUNDLE_ID - Your helper bundle ID (e.g., com.yourname.smcfanhelper)
+#   APP_BUNDLE_ID - Your app bundle ID (e.g., com.yourname.SMCFanHelper)
 ```
+
+Find your certificate with: `security find-identity -v -p codesigning`
+Find your Team ID at: <https://developer.apple.com/account>
 
 **Note:** You MUST use your own unique bundle identifier prefix. The helper daemon is installed system-wide and will conflict if multiple users use the same ID.
 
@@ -529,11 +534,10 @@ Production build (with code signing):
 make all
 ```
 
-Development build (IDE/testing):
+Development build (libraries only, no code signing needed):
 
 ```bash
-# Replace 'your.identifier' with your actual bundle ID prefix
-HELPER_BUNDLE_ID=your.identifier.smcfanhelper swift build
+swift build
 ```
 
 ### Install
@@ -560,12 +564,8 @@ The installer uses `SMJobBless` [^4] to install a privileged helper daemon.
 
 ### Uninstall
 
-Replace `YOUR_BUNDLE_ID` with the `BUNDLE_ID_PREFIX` value from your `config.mk`:
-
 ```bash
-sudo launchctl unload /Library/LaunchDaemons/YOUR_BUNDLE_ID.smcfanhelper.plist
-sudo rm /Library/PrivilegedHelperTools/YOUR_BUNDLE_ID.smcfanhelper
-sudo rm /Library/LaunchDaemons/YOUR_BUNDLE_ID.smcfanhelper.plist
+make uninstall-helper
 ```
 
 ## Project Structure
@@ -603,7 +603,7 @@ The following claims require additional verification, and the methodologies used
 | M1 | **Partial** | Direct mode writes observed without `Ftst` unlock. |
 | M2 | **Untested** | Expected to be consistent with M1 or M3/M4. |
 | M3 / M4 Max | **Tested** | Mode key `F%dMd` (uppercase). `Ftst` present. Unlock poll sequence required. |
-| M5 Max (Mac17,7) | **Tested** | Mode key `F%dmd` (lowercase). `Ftst` absent. Direct mode writes without unlock. |
+| M5 Max (Mac17,7) | **Tested** | Mode key `F%dmd` (lowercase). `Ftst` absent. Direct mode writes without unlock. Firmware clamps below-min targets to reported min (2317). Auto mode target is min RPM, not 0. |
 | M5 / M5 Pro | **Untested** | Expected to match M5 Max behavior. |
 | T2 (Intel) | **Untested** | Mode 2 behavior referenced in prior work but not verified. |
 | Mac Studio / Mac Pro | **Untested** | Multi-fan behavior on desktop hardware. |

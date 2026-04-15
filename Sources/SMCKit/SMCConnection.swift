@@ -120,7 +120,7 @@ public final class SMCConnection: @unchecked Sendable {
       logger.error("failed to read #KEY count")
       return []
     }
-    let totalKeys = countBytes.withUnsafeBytes { $0.load(as: UInt32.self) }
+    let totalKeys = SMCDataFormat.uint32(from: countBytes)
     logger.debug("total key count=\(totalKeys)")
 
     var keys: [String] = []
