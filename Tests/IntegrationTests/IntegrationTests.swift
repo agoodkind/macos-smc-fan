@@ -88,10 +88,10 @@ final class IntegrationTests: XCTestCase {
       XCTAssertTrue(hasUpperMode, "[\(hw.chipName)] Expected uppercase mode key")
     }
 
-    // Check Ftst
+    // Check Ftst: fetchKeyInfo throws on notFound, so read exits non-zero when key absent
     let ftstResult = runCLISync(["read", "Ftst"])
     let hasFtst = ftstResult.exitCode == 0
-    fputs("[test] Ftst available: \(hasFtst)\n", stderr)
+    fputs("[test] Ftst available: \(hasFtst) (exitCode=\(ftstResult.exitCode))\n", stderr)
     XCTAssertEqual(
       hasFtst, hw.ftstPresent,
       "[\(hw.chipName)] Ftst expectation mismatch: expected=\(hw.ftstPresent) actual=\(hasFtst)")
@@ -598,10 +598,10 @@ final class IntegrationTests: XCTestCase {
       setExpectation.fulfill()
     }
     wait(for: [setExpectation], timeout: 15.0)
-    Thread.sleep(forTimeInterval: 5.0)
+    Thread.sleep(forTimeInterval: hw.rampFromIdleSeconds)
 
     let verifyExpectation = XCTestExpectation(description: "Verify clamped")
-    runCLI(["list"]) { output, _ in
+    runCLI(["list"]) { [hw] output, _ in
       let lines = output.components(separatedBy: "\n")
       for line in lines where line.contains("Fan 0:") {
         XCTAssertTrue(line.contains("Target: 10000"), "Target should be 10000")
@@ -610,7 +610,8 @@ final class IntegrationTests: XCTestCase {
             of: "Fan 0: ", with: ""
           ).replacingOccurrences(of: " RPM", with: "")
           if let rpm = Int(rpmStr) {
-            XCTAssertGreaterThan(rpm, 2000, "RPM should reflect manual target or clamp")
+            XCTAssertGreaterThan(rpm, hw!.reportedMinRPM,
+              "[\(hw!.chipName)] RPM should reflect manual target or clamp")
           }
         }
       }
@@ -625,13 +626,14 @@ final class IntegrationTests: XCTestCase {
   }
 
   func testOtherFanWakesToAutoMin_WhenFirstFanGoesManual() throws {
-    // When first fan goes manual (Ftst=1), other fans wake to their auto minimum
-    // Reset both to auto first
+    guard hw.manualWakesOtherFans else {
+      throw XCTSkip("[\(hw.chipName)] No Ftst on this hardware, manual mode does not wake other fans")
+    }
+
     runCLI(["auto", "0"]) { _, _ in }
     runCLI(["auto", "1"]) { _, _ in }
     Thread.sleep(forTimeInterval: 5.0)
 
-    // Verify both fans are at 0 RPM (system idle)
     let initialExpectation = XCTestExpectation(description: "Initial idle")
     var initialFan1RPM = 0
     runCLI(["list"]) { output, _ in
@@ -653,22 +655,18 @@ final class IntegrationTests: XCTestCase {
     wait(for: [setExpectation], timeout: 15.0)
     Thread.sleep(forTimeInterval: 3.0)
 
-    // Fan 1 should have woken to auto min (~2500 RPM)
     let verifyExpectation = XCTestExpectation(description: "Verify Fan 1 woke")
     runCLI(["list"]) { output, _ in
       let lines = output.components(separatedBy: "\n")
       for line in lines where line.contains("Fan 1:") {
         XCTAssertTrue(line.contains("Mode: Auto"), "Fan 1 should be Auto")
-        // RPM should be around auto min (~2500)
         if let match = line.range(of: "Fan 1: (\\d+) RPM", options: .regularExpression) {
           let rpmStr = String(line[match]).replacingOccurrences(
             of: "Fan 1: ", with: ""
           ).replacingOccurrences(of: " RPM", with: "")
           if let rpm = Int(rpmStr) {
-            // If system was idle (0 RPM), Fan 1 should now be at auto min
             if initialFan1RPM == 0 {
-              XCTAssertGreaterThan(
-                rpm, 2000,
+              XCTAssertGreaterThan(rpm, 2000,
                 "Fan 1 should wake to auto min when Ftst is set")
             }
           }
@@ -678,7 +676,6 @@ final class IntegrationTests: XCTestCase {
     }
     wait(for: [verifyExpectation], timeout: 10.0)
 
-    // Cleanup
     runCLI(["auto", "0"]) { _, _ in }
     runCLI(["auto", "1"]) { _, _ in }
     Thread.sleep(forTimeInterval: 3.0)

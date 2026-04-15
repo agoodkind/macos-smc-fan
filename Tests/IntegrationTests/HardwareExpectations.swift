@@ -29,6 +29,14 @@ struct HardwareExpectations: Sendable {
   let belowMinBehavior: BelowMinBehavior
   let autoModeTarget: AutoModeTargetBehavior
   let rpmTolerance: Int
+
+  /// Whether setting one fan to manual wakes other fans to auto min.
+  /// On M3/M4 with Ftst=1, all fans wake. On M5 without Ftst, only the target fan is affected.
+  let manualWakesOtherFans: Bool
+
+  /// Seconds to wait for fan to ramp from 0 RPM to target before checking actual RPM.
+  /// Fans starting from 0 (cold idle) need more time than fans already spinning.
+  let rampFromIdleSeconds: TimeInterval
 }
 
 enum BelowMinBehavior: Sendable {
@@ -59,7 +67,9 @@ extension HardwareExpectations {
     reportedMaxRPM: 8500,
     belowMinBehavior: .preserved,
     autoModeTarget: .zeroOrMinRPM,
-    rpmTolerance: 300
+    rpmTolerance: 300,
+    manualWakesOtherFans: true,
+    rampFromIdleSeconds: 12
   )
 
   static let m5Max = HardwareExpectations(
@@ -71,8 +81,10 @@ extension HardwareExpectations {
     reportedMinRPM: 2317,
     reportedMaxRPM: 7826,
     belowMinBehavior: .clampedToMin,
-    autoModeTarget: .minRPM,
-    rpmTolerance: 200
+    autoModeTarget: .zeroOrMinRPM,
+    rpmTolerance: 200,
+    manualWakesOtherFans: false,
+    rampFromIdleSeconds: 8
   )
 
   static let allKnown: [HardwareExpectations] = [m4Max, m5Max]

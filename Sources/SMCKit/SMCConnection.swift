@@ -169,12 +169,15 @@ public final class SMCConnection: @unchecked Sendable {
       String(bytes: $0, encoding: .ascii) ?? "????"
     }
     if output.result != SMCResultCode.success.rawValue {
-      let resultDesc = SMCResultCode(rawValue: output.result).map { "\($0)" } ?? "0x\(String(output.result, radix: 16))"
-      logger.error("key=\(key) result=\(resultDesc) dataSize=\(output.keyInfo.dataSize) dataType=\(dataType)")
-    } else {
-      logger.debug("key=\(key) dataSize=\(output.keyInfo.dataSize) dataType=\(dataType)")
+      guard let resultCode = SMCResultCode(rawValue: output.result) else {
+        logger.error("key=\(key) unknown result=0x\(String(output.result, radix: 16))")
+        throw SMCError.firmware(.error)
+      }
+      logger.debug("key=\(key) result=\(resultCode) dataSize=\(output.keyInfo.dataSize) dataType=\(dataType)")
+      throw SMCError.firmware(resultCode)
     }
 
+    logger.debug("key=\(key) dataSize=\(output.keyInfo.dataSize) dataType=\(dataType)")
     return (param, output)
   }
 
