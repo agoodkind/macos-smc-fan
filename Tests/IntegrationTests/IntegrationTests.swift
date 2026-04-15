@@ -18,11 +18,6 @@ final class IntegrationTests: XCTestCase {
   private var helperConnection: NSXPCConnection?
   private var hw: HardwareExpectations!
 
-  override class func setUp() {
-    super.setUp()
-    resetAllFansToAuto()
-  }
-
   override func setUpWithError() throws {
     try super.setUpWithError()
 
@@ -52,9 +47,14 @@ final class IntegrationTests: XCTestCase {
         throw XCTSkip("Helper not installed. Run: make install")
       }
     }
+
+    // Reset all fans to auto before each test
+    Self.resetAllFansToAuto()
   }
 
   override func tearDown() {
+    // Reset all fans to auto after each test
+    Self.resetAllFansToAuto()
     helperConnection?.invalidate()
     helperConnection = nil
     super.tearDown()

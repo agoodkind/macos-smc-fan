@@ -161,7 +161,7 @@ public final class SMCConnection: @unchecked Sendable {
     _ key: String
   ) throws -> (param: SMCParamStruct, output: SMCParamStruct) {
     var param = SMCParamStruct()
-    param.key = fourCharCode(from: key)
+    param.key = try fourCharCode(from: key)
     param.data8 = SMCCommand.readKeyInfo.rawValue
     let output = try callSMC(input: param)
 
@@ -216,8 +216,10 @@ public final class SMCConnection: @unchecked Sendable {
   }
 
   /// Convert a 4-character string to UInt32
-  public func fourCharCode(from string: String) -> UInt32 {
-    precondition(string.count == 4, "SMC keys must be exactly 4 characters")
+  public func fourCharCode(from string: String) throws -> UInt32 {
+    guard string.count == 4 else {
+      throw SMCError.firmware(.badParameter)
+    }
     return string.utf8.reduce(0) { ($0 << 8) | UInt32($1) }
   }
 
