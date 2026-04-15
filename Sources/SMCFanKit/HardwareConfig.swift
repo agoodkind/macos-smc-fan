@@ -7,20 +7,8 @@
 //
 
 import Foundation
+import Logging
 import SMCKit
-import os
-
-// MARK: - Logging Helpers
-
-private let fanLog = OSLog(subsystem: "com.smcfankit", category: "fan")
-
-private func logDebug(_ message: String, function: String = #function) {
-  os_log(.debug, log: fanLog, "%{public}s: %{public}s", function, message)
-}
-
-private func logError(_ message: String, function: String = #function) {
-  os_log(.error, log: fanLog, "%{public}s: %{public}s", function, message)
-}
 
 // MARK: - Hardware Configuration
 
@@ -50,30 +38,30 @@ extension SMCHardwareConfig {
   /// - Parameter connection: An open SMCConnection to probe
   /// - Returns: A configured SMCHardwareConfig for the detected hardware
   /// - Throws: SMCError if hardware detection fails (though detection attempts graceful fallback)
-  public static func detectHardwareKeys(connection: SMCConnection) throws -> SMCHardwareConfig {
+  public static func detectHardwareKeys(connection: SMCConnection, logger: Logging.Logger = Logging.Logger(label: "com.smcfankit.fan")) throws -> SMCHardwareConfig {
     // Probe mode key casing
     var modeKey = SMCFanKey.modeLower
     for candidate in [SMCFanKey.modeLower, SMCFanKey.modeUpper] {
       let testKey = SMCFanKey.key(candidate, fan: 0)
       if let (_, size) = try? connection.readKey(testKey), size > 0 {
-        logDebug("mode key probe: \(testKey) -> found (size=\(size)), using format '\(candidate)'")
+        logger.debug("mode key probe: \(testKey) -> found (size=\(size)), using format '\(candidate)'")
         modeKey = candidate
         break
       } else {
-        logDebug("mode key probe: \(testKey) -> not found")
+        logger.debug("mode key probe: \(testKey) -> not found")
       }
     }
 
     // Probe Ftst availability
     var ftst = false
     if let (_, size) = try? connection.readKey(SMCFanKey.forceTest), size > 0 {
-      logDebug("Ftst probe: found (size=\(size))")
+      logger.debug("Ftst probe: found (size=\(size))")
       ftst = true
     } else {
-      logDebug("Ftst probe: not found")
+      logger.debug("Ftst probe: not found")
     }
 
-    logDebug("detected config: modeKeyFormat='\(modeKey)' ftstAvailable=\(ftst)")
+    logger.debug("detected config: modeKeyFormat='\(modeKey)' ftstAvailable=\(ftst)")
     return SMCHardwareConfig(modeKeyFormat: modeKey, ftstAvailable: ftst)
   }
 }

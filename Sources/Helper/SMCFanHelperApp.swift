@@ -7,10 +7,12 @@
 //
 
 import Foundation
+import SMCFanLogging
 
 @main
 struct SMCFanHelperMain {
   static func main() {
+    LogBootstrap.configure(subsystem: SMCFanConfiguration.default.helperBundleID)
     autoreleasepool {
       let helper = SMCFanHelper()
       helper.start()

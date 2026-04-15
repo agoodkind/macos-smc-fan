@@ -7,10 +7,12 @@
 //
 
 import Foundation
+import SMCFanLogging
 
 @main
 struct SMCFan {
   static func main() async {
+    LogBootstrap.configure(subsystem: SMCFanConfiguration.default.helperBundleID)
     let args = CommandLine.arguments
 
     // Default to list if no command

@@ -2,7 +2,7 @@ name: SMCFanApp
 options:
   bundleIdPrefix: io.goodkind
   deploymentTarget:
-    macOS: "10.15"
+    macOS: "11"
   createIntermediateGroups: true
 
 configFiles:
@@ -12,7 +12,7 @@ configFiles:
 settings:
   base:
     SWIFT_VERSION: "6.0"
-    MACOSX_DEPLOYMENT_TARGET: "10.15"
+    MACOSX_DEPLOYMENT_TARGET: "11.0"
 
 packages:
   SMCFan:
@@ -48,6 +48,8 @@ targets:
         embed: false
       - package: SMCFan
         product: SMCFanKit
+      - package: SMCFan
+        product: SMCFanLogging
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: $(APP_BUNDLE_ID)
@@ -91,6 +93,8 @@ targets:
     dependencies:
       - package: SMCFan
         product: SMCFanKit
+      - package: SMCFan
+        product: SMCFanLogging
     settings:
       base:
         PRODUCT_NAME: $(HELPER_BUNDLE_ID)
@@ -125,6 +129,8 @@ targets:
     dependencies:
       - package: SMCFan
         product: SMCFanKit
+      - package: SMCFan
+        product: SMCFanLogging
     settings:
       base:
         PRODUCT_NAME: smcfan

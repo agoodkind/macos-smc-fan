@@ -7,7 +7,7 @@
 //
 
 import Foundation
-import os
+import Logging
 
 private final class XPCSinkHolder: @unchecked Sendable {
   private let lock = NSLock()
@@ -27,57 +27,41 @@ private final class XPCSinkHolder: @unchecked Sendable {
   }
 }
 
+/// Logging facade that delegates to swift-log and relays messages over XPC.
+///
+/// Call sites use `Log.info(...)`, `Log.debug(...)`, etc. The underlying
+/// swift-log backend (JSONL to stderr + os_log) is configured by calling
+/// `LogBootstrap.configure()` at process start.
 public enum Log {
-  private static let subsystem = SMCFanConfiguration.default.helperBundleID
-  private static let category = "fan-control"
-  private static let legacyLog = OSLog(subsystem: subsystem, category: category)
+  nonisolated(unsafe) public static var logger = Logging.Logger(label: "io.goodkind.smcfan")
   private static let sinkHolder = XPCSinkHolder()
 
   public static func setXPCSink(_ sink: SMCFanClientProtocol?) {
     sinkHolder.sink = sink
   }
 
-  private static func format(_ message: String, _ function: String) -> String {
-    "\(function): \(message)"
-  }
-
   public static func info(_ message: String, function: String = #function) {
-    let msg = format(message, function)
-    if #available(macOS 11.0, *) {
-      Logger(subsystem: subsystem, category: category).info("\(msg, privacy: .public)")
-    } else {
-      os_log(.info, log: legacyLog, "%{public}s", msg)
-    }
-    sinkHolder.sink?.logMessage(msg)
+    logger.info("\(function): \(message)")
+    sinkHolder.sink?.logMessage("\(function): \(message)")
   }
 
   public static func notice(_ message: String, function: String = #function) {
-    let msg = format(message, function)
-    if #available(macOS 11.0, *) {
-      Logger(subsystem: subsystem, category: category).notice("\(msg, privacy: .public)")
-    } else {
-      os_log(.default, log: legacyLog, "%{public}s", msg)
-    }
-    sinkHolder.sink?.logMessage(msg)
+    logger.notice("\(function): \(message)")
+    sinkHolder.sink?.logMessage("\(function): \(message)")
   }
 
   public static func warning(_ message: String, function: String = #function) {
-    let msg = format(message, function)
-    if #available(macOS 11.0, *) {
-      Logger(subsystem: subsystem, category: category).warning("\(msg, privacy: .public)")
-    } else {
-      os_log(.error, log: legacyLog, "%{public}s", msg)
-    }
-    sinkHolder.sink?.logMessage(msg)
+    logger.warning("\(function): \(message)")
+    sinkHolder.sink?.logMessage("\(function): \(message)")
   }
 
   public static func debug(_ message: String, function: String = #function) {
-    let msg = format(message, function)
-    if #available(macOS 11.0, *) {
-      Logger(subsystem: subsystem, category: category).debug("\(msg, privacy: .public)")
-    } else {
-      os_log(.debug, log: legacyLog, "%{public}s", msg)
-    }
+    logger.debug("\(function): \(message)")
+  }
+
+  public static func error(_ message: String) {
+    logger.error("\(message)")
+    FileHandle.standardError.write(Data("Error: \(message)\n".utf8))
   }
 
   public static func connectionInfo(_ message: String, function: String = #function) {
@@ -90,9 +74,5 @@ public enum Log {
 
   public static func connectionWarning(_ message: String, function: String = #function) {
     warning(message, function: function)
-  }
-
-  public static func error(_ message: String) {
-    FileHandle.standardError.write(Data("Error: \(message)\n".utf8))
   }
 }

@@ -16,6 +16,7 @@ import XCTest
 /// NOT via: swift test (these will be skipped)
 final class IntegrationTests: XCTestCase {
   private var helperConnection: NSXPCConnection?
+  private var hw: HardwareExpectations!
 
   override class func setUp() {
     super.setUp()
@@ -29,9 +30,18 @@ final class IntegrationTests: XCTestCase {
       throw XCTSkip("Integration tests require root. Run: sudo make test-integration")
     }
 
+    let model = HardwareExpectations.currentModel
+    guard let detected = HardwareExpectations.detect() else {
+      throw XCTSkip(
+        "Unknown hardware model: \(model). "
+          + "Add a HardwareExpectations entry to run integration tests on this machine."
+      )
+    }
+    hw = detected
+    fputs("[setup] Hardware: \(hw.chipName) (\(hw.modelIdentifier))\n", stderr)
+    fflush(stderr)
+
     if #available(macOS 13.0, *) {
-      // SMAppService doesn't install a plist in /Library/LaunchDaemons
-      // Verify helper app is in /Applications
       let appPath = "/Applications/SMCFanHelper.app"
       guard FileManager.default.fileExists(atPath: appPath) else {
         throw XCTSkip("SMCFanHelper.app not found in /Applications")
@@ -56,33 +66,43 @@ final class IntegrationTests: XCTestCase {
   // and the output tells you exactly why.
 
   func testA_SMCKeyDiscovery() throws {
-    // Enumerate all fan-related keys to detect casing and availability.
-    // This is the test that would have immediately caught the F0Md vs F0md issue.
-    let keysOutput = runCLISync(["keys", "F"])
-    print("=== SMC Fan Keys ===")
-    print(keysOutput.output)
-
-    // Must find at least FNum
-    XCTAssertTrue(keysOutput.output.contains("FNum"), "FNum key must exist")
+    // Probe individual keys to detect casing and availability.
+    // This catches the F0Md vs F0md issue without using the `keys` enumeration command.
+    let fnumResult = runCLISync(["read", "FNum"])
+    XCTAssertEqual(fnumResult.exitCode, 0, "FNum key must exist")
 
     // Check which mode key variant exists
-    let hasLowerMode = keysOutput.output.contains("F0md")
-    let hasUpperMode = keysOutput.output.contains("F0Md")
-    print("Mode key: F0md=\(hasLowerMode) F0Md=\(hasUpperMode)")
+    let lowerResult = runCLISync(["read", "F0md"])
+    let upperResult = runCLISync(["read", "F0Md"])
+    let hasLowerMode = lowerResult.exitCode == 0
+    let hasUpperMode = upperResult.exitCode == 0
+
+    fputs("[test] Mode key: F0md=\(hasLowerMode) F0Md=\(hasUpperMode)\n", stderr)
     XCTAssertTrue(
       hasLowerMode || hasUpperMode, "Neither F0md nor F0Md found. Fan mode key missing from SMC.")
 
-    // Check Ftst
-    let allKeysOutput = runCLISync(["keys"])
-    let hasFtst = allKeysOutput.output.contains("Ftst")
-    print("Ftst available: \(hasFtst)")
+    // Verify against hardware expectations
+    if hw.modeKeyFormat == "F%dmd" {
+      XCTAssertTrue(hasLowerMode, "[\(hw.chipName)] Expected lowercase mode key")
+    } else {
+      XCTAssertTrue(hasUpperMode, "[\(hw.chipName)] Expected uppercase mode key")
+    }
 
-    // Report hardware config
-    print("=== Hardware Config ===")
-    print("Mode key format: \(hasLowerMode ? "F%dmd (lowercase)" : "F%dMd (uppercase)")")
-    print(
-      "Ftst: \(hasFtst ? "present (unlock sequence available)" : "absent (direct mode writes expected)")"
-    )
+    // Check Ftst
+    let ftstResult = runCLISync(["read", "Ftst"])
+    let hasFtst = ftstResult.exitCode == 0
+    fputs("[test] Ftst available: \(hasFtst)\n", stderr)
+    XCTAssertEqual(
+      hasFtst, hw.ftstPresent,
+      "[\(hw.chipName)] Ftst expectation mismatch: expected=\(hw.ftstPresent) actual=\(hasFtst)")
+
+    fputs("[test] === Hardware Config ===\n", stderr)
+    fputs(
+      "[test] Mode key: \(hasLowerMode ? "F%dmd (lowercase)" : "F%dMd (uppercase)")\n", stderr)
+    fputs(
+      "[test] Ftst: \(hasFtst ? "present (unlock sequence)" : "absent (direct mode writes)")\n",
+      stderr)
+    fflush(stderr)
   }
 
   func testA_SMCReadKeyInfo() throws {
@@ -463,16 +483,28 @@ final class IntegrationTests: XCTestCase {
     // Wait for thermalmonitord to reclaim control
     Thread.sleep(forTimeInterval: 5.0)
 
-    // Verify fans are in auto mode with target 0
-    // (on cold system, fans may drop to 0 RPM)
+    // Verify fans are in auto mode. Target depends on thermal state and hardware.
     let verifyExpectation = XCTestExpectation(description: "Verify system mode")
-    runCLI(["list"]) { output, _ in
+    runCLI(["list"]) { [hw] output, _ in
       XCTAssertTrue(
         output.contains("Mode: Auto"),
         "Fans should be in Auto mode")
-      XCTAssertTrue(
-        output.contains("Target: 0"),
-        "Target should be 0 (system control)")
+      switch hw!.autoModeTarget {
+      case .zero:
+        XCTAssertTrue(
+          output.contains("Target: 0"),
+          "[\(hw!.chipName)] Target should be 0 (system control)")
+      case .minRPM:
+        XCTAssertTrue(
+          output.contains("Target: \(hw!.reportedMinRPM)"),
+          "[\(hw!.chipName)] Target should be \(hw!.reportedMinRPM) (thermalmonitord)")
+      case .zeroOrMinRPM:
+        let hasZero = output.contains("Target: 0")
+        let hasMin = output.contains("Target: \(hw!.reportedMinRPM)")
+        XCTAssertTrue(
+          hasZero || hasMin,
+          "[\(hw!.chipName)] Target should be 0 or \(hw!.reportedMinRPM)")
+      }
       verifyExpectation.fulfill()
     }
     wait(for: [verifyExpectation], timeout: 10.0)
@@ -526,16 +558,27 @@ final class IntegrationTests: XCTestCase {
     Thread.sleep(forTimeInterval: 3.0)
 
     let verifyExpectation = XCTestExpectation(description: "Verify below min")
-    runCLI(["list"]) { output, _ in
+    runCLI(["list"]) { [hw] output, _ in
       let lines = output.components(separatedBy: "\n")
       for line in lines where line.contains("Fan 0:") {
-        XCTAssertTrue(line.contains("Target: 1000"), "Target should be 1000")
+        switch hw!.belowMinBehavior {
+        case .preserved:
+          XCTAssertTrue(
+            line.contains("Target: 1000"),
+            "[\(hw!.chipName)] Target should be preserved as 1000")
+        case .clampedToMin:
+          XCTAssertTrue(
+            line.contains("Target: \(hw!.reportedMinRPM)"),
+            "[\(hw!.chipName)] Target should be clamped to min (\(hw!.reportedMinRPM))")
+        }
         if let match = line.range(of: "Fan 0: (\\d+) RPM", options: .regularExpression) {
           let rpmStr = String(line[match]).replacingOccurrences(
             of: "Fan 0: ", with: ""
           ).replacingOccurrences(of: " RPM", with: "")
           if let rpm = Int(rpmStr) {
-            XCTAssertLessThanOrEqual(rpm, 2500, "RPM should be at or below hardware min")
+            XCTAssertLessThanOrEqual(
+              rpm, hw!.reportedMinRPM + hw!.rpmTolerance,
+              "[\(hw!.chipName)] RPM should be at or below hardware min")
           }
         }
       }
@@ -881,9 +924,17 @@ final class IntegrationTests: XCTestCase {
 
   // MARK: - Helpers
 
+  private static func log(_ msg: String) {
+    fputs("[setUp] \(msg)\n", stderr)
+    fflush(stderr)
+  }
+
   private static func resetAllFansToAuto() {
     let path = cliPath
     var fanCount: UInt = 2
+
+    log("resetAllFansToAuto: cliPath=\(path)")
+    log("resetAllFansToAuto: calling list...")
 
     let listProcess = Process()
     let listPipe = Pipe()
@@ -892,9 +943,12 @@ final class IntegrationTests: XCTestCase {
     listProcess.standardOutput = listPipe
     listProcess.standardError = listPipe
     try? listProcess.run()
+    log("resetAllFansToAuto: waiting for list to exit...")
     listProcess.waitUntilExit()
+    log("resetAllFansToAuto: list exited with \(listProcess.terminationStatus)")
     let listData = listPipe.fileHandleForReading.readDataToEndOfFile()
     let listOutput = String(data: listData, encoding: .utf8) ?? ""
+    log("resetAllFansToAuto: list output=\(listOutput)")
     if let match = listOutput.range(of: "Fans: (\\d+)", options: .regularExpression) {
       let numStr = listOutput[match].dropFirst(6)
       fanCount = UInt(numStr) ?? 2
@@ -915,12 +969,17 @@ final class IntegrationTests: XCTestCase {
   private static var cliPath: String {
     let fileURL = URL(fileURLWithPath: #filePath)
     let repoRoot = fileURL
-      .deletingLastPathComponent()  // IntegrationTests/
-      .deletingLastPathComponent()  // Tests/
+      .deletingLastPathComponent()  // IntegrationTests.swift -> IntegrationTests/
+      .deletingLastPathComponent()  // IntegrationTests/ -> Tests/
+      .deletingLastPathComponent()  // Tests/ -> repo root
     return repoRoot.appendingPathComponent("Products").appendingPathComponent("smcfan").path
   }
 
   private func runCLISync(_ args: [String]) -> (output: String, exitCode: Int32) {
+    let cmdStr = "smcfan \(args.joined(separator: " "))"
+    fputs("[sync] \(cmdStr)\n", stderr)
+    fflush(stderr)
+
     let process = Process()
     let pipe = Pipe()
     process.executableURL = URL(fileURLWithPath: Self.cliPath)
@@ -931,8 +990,18 @@ final class IntegrationTests: XCTestCase {
       try process.run()
       process.waitUntilExit()
       let data = pipe.fileHandleForReading.readDataToEndOfFile()
-      return (String(data: data, encoding: .utf8) ?? "", process.terminationStatus)
+      let output = String(data: data, encoding: .utf8) ?? ""
+
+      for line in output.components(separatedBy: "\n") where !line.isEmpty {
+        fputs("[sync]   \(line)\n", stderr)
+      }
+      fputs("[sync] exit=\(process.terminationStatus)\n", stderr)
+      fflush(stderr)
+
+      return (output, process.terminationStatus)
     } catch {
+      fputs("[sync] ERROR: \(error)\n", stderr)
+      fflush(stderr)
       return ("Error: \(error)", 1)
     }
   }
@@ -968,6 +1037,10 @@ final class IntegrationTests: XCTestCase {
   }
 
   private func runCLIInternal(_ args: [String], completion: @escaping (String, Int32) -> Void) {
+    let cmdStr = "smcfan \(args.joined(separator: " "))"
+    fputs("[cli] \(cmdStr)\n", stderr)
+    fflush(stderr)
+
     let process = Process()
     let pipe = Pipe()
 
@@ -984,8 +1057,16 @@ final class IntegrationTests: XCTestCase {
       let data = pipe.fileHandleForReading.readDataToEndOfFile()
       let output = String(data: data, encoding: .utf8) ?? ""
 
+      for line in output.components(separatedBy: "\n") where !line.isEmpty {
+        fputs("[cli]   \(line)\n", stderr)
+      }
+      fputs("[cli] exit=\(process.terminationStatus)\n", stderr)
+      fflush(stderr)
+
       completion(output, process.terminationStatus)
     } catch {
+      fputs("[cli] ERROR: \(error)\n", stderr)
+      fflush(stderr)
       completion("Error: \(error)", 1)
     }
   }

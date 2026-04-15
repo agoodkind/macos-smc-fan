@@ -11,14 +11,22 @@ import PackageDescription
 
 let package = Package(
     name: "SMCFan",
-    platforms: [.macOS(.v10_15)],
+    platforms: [.macOS(.v11)],
     products: [
         .library(name: "SMCKit", targets: ["SMCKit"]),
         .library(name: "SMCFanKit", targets: ["SMCFanKit"]),
+        .library(name: "SMCFanLogging", targets: ["SMCFanLogging"]),
+    ],
+    dependencies: [
+        .package(url: "https://github.com/apple/swift-log.git", from: "1.6.0"),
+        .package(url: "https://github.com/xcode-actions/json-logger.git", from: "1.0.0"),
     ],
     targets: [
         .target(
             name: "SMCKit",
+            dependencies: [
+                .product(name: "Logging", package: "swift-log"),
+            ],
             path: "Sources/SMCKit",
             swiftSettings: [
                 .enableUpcomingFeature("StrictConcurrency")
@@ -26,8 +34,22 @@ let package = Package(
         ),
         .target(
             name: "SMCFanKit",
-            dependencies: ["SMCKit"],
+            dependencies: [
+                "SMCKit",
+                .product(name: "Logging", package: "swift-log"),
+            ],
             path: "Sources/SMCFanKit",
+            swiftSettings: [
+                .enableUpcomingFeature("StrictConcurrency")
+            ]
+        ),
+        .target(
+            name: "SMCFanLogging",
+            dependencies: [
+                .product(name: "Logging", package: "swift-log"),
+                .product(name: "JSONLogger", package: "json-logger"),
+            ],
+            path: "Sources/SMCFanLogging",
             swiftSettings: [
                 .enableUpcomingFeature("StrictConcurrency")
             ]

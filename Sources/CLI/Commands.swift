@@ -12,7 +12,7 @@ import Foundation
 enum Commands {
 
   static func list() async throws {
-    Log.debug("BEGIN")
+    Log.debug("called")
     let client = try XPCClient()
     try await client.open()
 
@@ -28,7 +28,7 @@ enum Commands {
           + "Mode: \(info.manualMode ? "Manual" : "Auto"))"
       )
     }
-    Log.debug("END")
+    Log.debug("done")
   }
 
   static func set(fan: Int, rpm: Float) async throws {
@@ -37,7 +37,7 @@ enum Commands {
     try await client.open()
     try await client.setFanRPM(UInt(fan), rpm: rpm)
     print("Set fan \(fan) to \(Int(rpm)) RPM")
-    Log.debug("END")
+    Log.debug("done")
   }
 
   static func auto(fan: Int) async throws {
@@ -46,7 +46,7 @@ enum Commands {
     try await client.open()
     try await client.setFanAuto(UInt(fan))
     print("Set fan \(fan) to auto mode")
-    Log.debug("END")
+    Log.debug("done")
   }
 
   static func read(key: String) async throws {
@@ -70,7 +70,7 @@ enum Commands {
       let value = try? await client.readKey(key)
       print("  \(key) = \(value.map { String($0) } ?? "?")")
     }
-    Log.debug("END")
+    Log.debug("done")
   }
 
   static func printUsage() {

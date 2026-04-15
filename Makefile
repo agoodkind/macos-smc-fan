@@ -48,9 +48,12 @@ uninstall-helper:
 test:
 	swift test
 
+XCTEST = $(shell xcrun --find xctest)
+TEST_BUNDLE = .build/arm64-apple-macosx/debug/SMCFanPackageTests.xctest
+
 test-integration: all
 	swift build --build-tests
-	sudo swift test --skip-build --filter IntegrationTests
+	sudo $(XCTEST) -XCTest IntegrationTests $(TEST_BUNDLE)
 
 format:
 	swift-format format --in-place --recursive Sources/

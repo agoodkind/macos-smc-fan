@@ -7,20 +7,8 @@
 //
 
 import Foundation
+import Logging
 import SMCKit
-import os
-
-// MARK: - Logging Helpers
-
-private let fanLog = OSLog(subsystem: "com.smcfankit", category: "fan")
-
-private func logDebug(_ message: String, function: String = #function) {
-  os_log(.debug, log: fanLog, "%{public}s: %{public}s", function, message)
-}
-
-private func logError(_ message: String, function: String = #function) {
-  os_log(.error, log: fanLog, "%{public}s: %{public}s", function, message)
-}
 
 // MARK: - Fan Control Strategy
 
@@ -42,29 +30,18 @@ public enum FanControlStrategy: Sendable {
 public class FanController {
   public let connection: SMCConnection
   public let config: SMCHardwareConfig
+  private let logger: Logging.Logger
 
-  /// Initialize a FanController with an open connection.
-  ///
-  /// Probes the hardware to detect configuration, then stores both the connection
-  /// and hardware config for use in control operations.
-  ///
-  /// - Parameter connection: An open SMCConnection
-  /// - Throws: SMCError if hardware detection fails
-  public init(connection: SMCConnection) throws {
+  public init(connection: SMCConnection, logger: Logging.Logger = Logging.Logger(label: "com.smcfankit.fan")) throws {
     self.connection = connection
-    self.config = try SMCHardwareConfig.detectHardwareKeys(connection: connection)
+    self.logger = logger
+    self.config = try SMCHardwareConfig.detectHardwareKeys(connection: connection, logger: logger)
   }
 
-  /// Initialize with explicit hardware configuration.
-  ///
-  /// Use this when you already have hardware config (e.g., from a previous detection).
-  ///
-  /// - Parameters:
-  ///   - connection: An open SMCConnection
-  ///   - hardwareConfig: Pre-detected hardware configuration
-  public init(connection: SMCConnection, hardwareConfig: SMCHardwareConfig) {
+  public init(connection: SMCConnection, hardwareConfig: SMCHardwareConfig, logger: Logging.Logger = Logging.Logger(label: "com.smcfankit.fan")) {
     self.connection = connection
     self.config = hardwareConfig
+    self.logger = logger
   }
 
   // MARK: - Control Operations
@@ -83,21 +60,21 @@ public class FanController {
     // Try direct mode write first
     do {
       try connection.writeKey(modeKey, bytes: [1])
-      logDebug("fan\(fanIndex) modeKey=\(modeKey) strategy=direct succeeded")
+      logger.debug("fan\(fanIndex) modeKey=\(modeKey) strategy=direct succeeded")
       return .direct
     } catch {
-      logDebug("fan\(fanIndex) modeKey=\(modeKey) direct write failed: \(error), ftstAvailable=\(config.ftstAvailable)")
+      logger.debug("fan\(fanIndex) modeKey=\(modeKey) direct write failed: \(error), ftstAvailable=\(config.ftstAvailable)")
       // Fall back to Ftst unlock sequence if available
       guard config.ftstAvailable else {
-        logError("fan\(fanIndex) modeKey=\(modeKey) direct write failed and Ftst not available")
+        logger.error("fan\(fanIndex) modeKey=\(modeKey) direct write failed and Ftst not available")
         throw SMCError.firmware(.notFound)
       }
     }
 
     // Use Ftst unlock sequence
-    logDebug("fan\(fanIndex) falling back to Ftst unlock sequence")
+    logger.debug("fan\(fanIndex) falling back to Ftst unlock sequence")
     try unlockFanControlSync(fanIndex: fanIndex)
-    logDebug("fan\(fanIndex) strategy=ftstUnlock succeeded")
+    logger.debug("fan\(fanIndex) strategy=ftstUnlock succeeded")
     return .ftstUnlock
   }
 
@@ -116,7 +93,7 @@ public class FanController {
     maxRetries: Int = 100,
     timeout: TimeInterval = 10.0
   ) throws {
-    logDebug("fan\(fanIndex) writing Ftst=1")
+    logger.debug("fan\(fanIndex) writing Ftst=1")
     try connection.writeKey(SMCFanKey.forceTest, bytes: [1])
 
     Thread.sleep(forTimeInterval: 0.5)
@@ -131,12 +108,12 @@ public class FanController {
       do {
         try connection.writeKey(modeKey, bytes: [1])
         let elapsed = Date().timeIntervalSince(start)
-        logDebug("fan\(fanIndex) modeKey=\(modeKey) unlocked after \(attempt) attempt(s), elapsed=\(String(format: "%.2f", elapsed))s")
+        logger.debug("fan\(fanIndex) modeKey=\(modeKey) unlocked after \(attempt) attempt(s), elapsed=\(String(format: "%.2f", elapsed))s")
         return
       } catch {
         if Date() >= deadline {
           let elapsed = Date().timeIntervalSince(start)
-          logError("fan\(fanIndex) modeKey=\(modeKey) timed out after \(attempt) attempt(s), elapsed=\(String(format: "%.2f", elapsed))s")
+          logger.error("fan\(fanIndex) modeKey=\(modeKey) timed out after \(attempt) attempt(s), elapsed=\(String(format: "%.2f", elapsed))s")
           throw SMCError.timeout
         }
         Thread.sleep(forTimeInterval: 0.1)
@@ -144,7 +121,7 @@ public class FanController {
     }
 
     let elapsed = Date().timeIntervalSince(start)
-    logError("fan\(fanIndex) modeKey=\(modeKey) exhausted \(maxRetries) retries, elapsed=\(String(format: "%.2f", elapsed))s")
+    logger.error("fan\(fanIndex) modeKey=\(modeKey) exhausted \(maxRetries) retries, elapsed=\(String(format: "%.2f", elapsed))s")
     throw SMCError.timeout
   }
 
@@ -163,7 +140,7 @@ public class FanController {
     maxRetries: Int = 100,
     timeout: TimeInterval = 10.0
   ) async throws {
-    logDebug("fan\(fanIndex) writing Ftst=1")
+    logger.debug("fan\(fanIndex) writing Ftst=1")
     try connection.writeKey(SMCFanKey.forceTest, bytes: [1])
 
     try await Task.sleep(nanoseconds: 500_000_000)
@@ -178,12 +155,12 @@ public class FanController {
       do {
         try connection.writeKey(modeKey, bytes: [1])
         let elapsed = Date().timeIntervalSince(start)
-        logDebug("fan\(fanIndex) modeKey=\(modeKey) unlocked after \(attempt) attempt(s), elapsed=\(String(format: "%.2f", elapsed))s")
+        logger.debug("fan\(fanIndex) modeKey=\(modeKey) unlocked after \(attempt) attempt(s), elapsed=\(String(format: "%.2f", elapsed))s")
         return
       } catch {
         if Date() >= deadline {
           let elapsed = Date().timeIntervalSince(start)
-          logError("fan\(fanIndex) modeKey=\(modeKey) timed out after \(attempt) attempt(s), elapsed=\(String(format: "%.2f", elapsed))s")
+          logger.error("fan\(fanIndex) modeKey=\(modeKey) timed out after \(attempt) attempt(s), elapsed=\(String(format: "%.2f", elapsed))s")
           throw SMCError.timeout
         }
         try await Task.sleep(nanoseconds: 100_000_000)
@@ -191,7 +168,7 @@ public class FanController {
     }
 
     let elapsed = Date().timeIntervalSince(start)
-    logError("fan\(fanIndex) modeKey=\(modeKey) exhausted \(maxRetries) retries, elapsed=\(String(format: "%.2f", elapsed))s")
+    logger.error("fan\(fanIndex) modeKey=\(modeKey) exhausted \(maxRetries) retries, elapsed=\(String(format: "%.2f", elapsed))s")
     throw SMCError.timeout
   }
 
@@ -201,8 +178,8 @@ public class FanController {
   ///
   /// - Throws: SMCError if the Ftst key write fails
   public func resetFanControl() throws {
-    logDebug("writing Ftst=0 to reset fan control")
+    logger.debug("writing Ftst=0 to reset fan control")
     try connection.writeKey(SMCFanKey.forceTest, bytes: [0])
-    logDebug("fan control reset complete")
+    logger.debug("fan control reset complete")
   }
 }

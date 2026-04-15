@@ -8,19 +8,7 @@
 
 import Foundation
 import IOKit
-import os
-
-// MARK: - Logging Helpers
-
-private let smcLog = OSLog(subsystem: "com.smckit", category: "smc")
-
-private func logDebug(_ message: String, function: String = #function) {
-  os_log(.debug, log: smcLog, "%{public}s: %{public}s", function, message)
-}
-
-private func logError(_ message: String, function: String = #function) {
-  os_log(.error, log: smcLog, "%{public}s: %{public}s", function, message)
-}
+import Logging
 
 // MARK: - SMC Interface
 
@@ -28,10 +16,12 @@ private func logError(_ message: String, function: String = #function) {
 public final class SMCConnection: @unchecked Sendable {
 
   private let connection: io_connect_t
+  private let logger: Logging.Logger
 
   // MARK: Initialization
 
-  public init() throws {
+  public init(logger: Logging.Logger = Logging.Logger(label: "com.smckit.smc")) throws {
+    self.logger = logger
     var iterator: io_iterator_t = 0
     defer { IOObjectRelease(iterator) }
 
@@ -68,7 +58,7 @@ public final class SMCConnection: @unchecked Sendable {
 
     let model = SMCConnection.hardwareModel()
     let osVersion = ProcessInfo.processInfo.operatingSystemVersionString
-    logDebug("connection=\(conn) model=\(model) os=\(osVersion)")
+    logger.debug("connection=\(conn) model=\(model) os=\(osVersion)")
   }
 
   deinit {
@@ -93,7 +83,7 @@ public final class SMCConnection: @unchecked Sendable {
     }
 
     let preview = bytes.prefix(4).map { String(format: "0x%02x", $0) }.joined(separator: " ")
-    logDebug("key=\(key) size=\(dataSize) bytes=[\(preview)\(bytes.count > 4 ? "..." : "")]")
+    logger.debug("key=\(key) size=\(dataSize) bytes=[\(preview)\(bytes.count > 4 ? "..." : "")]")
 
     return (bytes, dataSize)
   }
@@ -101,7 +91,7 @@ public final class SMCConnection: @unchecked Sendable {
   /// Write raw bytes to an SMC key
   public func writeKey(_ key: String, bytes: [UInt8]) throws {
     let preview = bytes.prefix(4).map { String(format: "0x%02x", $0) }.joined(separator: " ")
-    logDebug("key=\(key) bytes=[\(preview)\(bytes.count > 4 ? "..." : "")]")
+    logger.debug("key=\(key) bytes=[\(preview)\(bytes.count > 4 ? "..." : "")]")
 
     let (param, output) = try fetchKeyInfo(key)
 
@@ -114,24 +104,24 @@ public final class SMCConnection: @unchecked Sendable {
 
     if writeOutput.result != SMCResultCode.success.rawValue {
       guard let resultCode = SMCResultCode(rawValue: writeOutput.result) else {
-        logError("key=\(key) unknown result=0x\(String(writeOutput.result, radix: 16))")
+        logger.error("key=\(key) unknown result=0x\(String(writeOutput.result, radix: 16))")
         throw SMCError.firmware(.error)
       }
-      logError("key=\(key) firmware error=\(resultCode)")
+      logger.error("key=\(key) firmware error=\(resultCode)")
       throw SMCError.firmware(resultCode)
     }
 
-    logDebug("key=\(key) write succeeded")
+    logger.debug("key=\(key) write succeeded")
   }
 
   /// Enumerate all SMC keys by reading the #KEY count and iterating with readIndex.
   public func enumerateKeys() -> [String] {
     guard let (countBytes, countSize) = try? readKey("#KEY"), countSize >= 4 else {
-      logError("failed to read #KEY count")
+      logger.error("failed to read #KEY count")
       return []
     }
     let totalKeys = countBytes.withUnsafeBytes { $0.load(as: UInt32.self) }
-    logDebug("total key count=\(totalKeys)")
+    logger.debug("total key count=\(totalKeys)")
 
     var keys: [String] = []
     for i in 0..<totalKeys {
@@ -151,7 +141,7 @@ public final class SMCConnection: @unchecked Sendable {
       keys.append(String(chars))
     }
 
-    logDebug("enumerated \(keys.count) keys")
+    logger.debug("enumerated \(keys.count) keys")
     return keys
   }
 
@@ -180,9 +170,9 @@ public final class SMCConnection: @unchecked Sendable {
     }
     if output.result != SMCResultCode.success.rawValue {
       let resultDesc = SMCResultCode(rawValue: output.result).map { "\($0)" } ?? "0x\(String(output.result, radix: 16))"
-      logError("key=\(key) result=\(resultDesc) dataSize=\(output.keyInfo.dataSize) dataType=\(dataType)")
+      logger.error("key=\(key) result=\(resultDesc) dataSize=\(output.keyInfo.dataSize) dataType=\(dataType)")
     } else {
-      logDebug("key=\(key) dataSize=\(output.keyInfo.dataSize) dataType=\(dataType)")
+      logger.debug("key=\(key) dataSize=\(output.keyInfo.dataSize) dataType=\(dataType)")
     }
 
     return (param, output)
@@ -210,13 +200,13 @@ public final class SMCConnection: @unchecked Sendable {
     )
 
     guard result == kIOReturnSuccess else {
-      logError("IOKit error=0x\(String(result, radix: 16)) key=0x\(String(inp.key, radix: 16))")
+      logger.error("IOKit error=0x\(String(result, radix: 16)) key=0x\(String(inp.key, radix: 16))")
       throw SMCError.ioKit(result)
     }
 
     if out.result != SMCResultCode.success.rawValue {
       let resultDesc = SMCResultCode(rawValue: out.result).map { "\($0)" } ?? "0x\(String(out.result, radix: 16))"
-      logDebug("SMC result=\(resultDesc) for key=0x\(String(inp.key, radix: 16))")
+      logger.debug("SMC result=\(resultDesc) for key=0x\(String(inp.key, radix: 16))")
     }
 
     return out
