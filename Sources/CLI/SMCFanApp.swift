@@ -12,6 +12,9 @@ import SMCFanLogging
 @main
 struct SMCFan {
   static func main() async {
+    BuildInfo.commit = generatedGitCommit
+    BuildInfo.version = generatedGitVersion
+    BuildInfo.dirty = generatedGitDirty
     LogBootstrap.configure(subsystem: SMCFanConfiguration.default.helperBundleID)
     let args = CommandLine.arguments
 

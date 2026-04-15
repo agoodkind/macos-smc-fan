@@ -12,6 +12,9 @@ import SMCFanLogging
 @main
 struct SMCFanHelperMain {
   static func main() {
+    BuildInfo.commit = generatedGitCommit
+    BuildInfo.version = generatedGitVersion
+    BuildInfo.dirty = generatedGitDirty
     LogBootstrap.configure(
       subsystem: SMCFanConfiguration.default.helperBundleID,
       extraHandlers: [XPCRelayLogHandler()]
