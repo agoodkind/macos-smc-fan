@@ -11,7 +11,12 @@ import IOKit
 import SMCKit
 import SMCFanKit
 
-/// XPC service that handles privileged SMC operations
+import Logging
+
+private let ultraDebug = ProcessInfo.processInfo.environment["SMCFAN_ULTRA_DEBUG"] != nil
+
+private let tempKeys = ["Tp09", "Tp0T", "Tg0f", "Tw0P", "TW0P", "TC0P", "TC0p"]
+
 class SMCFanHelper: NSObject, NSXPCListenerDelegate, SMCFanHelperProtocol, @unchecked Sendable {
   private let listener: NSXPCListener
   private var fanController: FanController?
@@ -25,8 +30,7 @@ class SMCFanHelper: NSObject, NSXPCListenerDelegate, SMCFanHelperProtocol, @unch
 
   func start() {
     listener.resume()
-    Log.info("Service started")
-    Log.debug("listener resumed, entering RunLoop")
+    Log.info("Helper daemon started, listening for XPC connections")
     RunLoop.current.run()
   }
 
@@ -36,34 +40,26 @@ class SMCFanHelper: NSObject, NSXPCListenerDelegate, SMCFanHelperProtocol, @unch
     _: NSXPCListener,
     shouldAcceptNewConnection newConnection: NSXPCConnection
   ) -> Bool {
-    Log.debug(
-      "new XPC connection request pid=\(newConnection.processIdentifier) euid=\(newConnection.effectiveUserIdentifier)"
-    )
+    Log.debug("XPC connection from pid=\(newConnection.processIdentifier) euid=\(newConnection.effectiveUserIdentifier)")
     newConnection.exportedInterface = NSXPCInterface(with: SMCFanHelperProtocol.self)
     newConnection.exportedObject = self
     newConnection.remoteObjectInterface = NSXPCInterface(with: SMCFanClientProtocol.self)
 
     if let client = newConnection.remoteObjectProxy as? SMCFanClientProtocol {
       Log.setXPCSink(client)
-      Log.debug("XPC sink set for pid=\(newConnection.processIdentifier)")
-    } else {
-      Log.debug("failed to get remote object proxy as SMCFanClientProtocol")
     }
 
     newConnection.invalidationHandler = {
-      Log.debug("XPC connection invalidated")
       Log.setXPCSink(nil)
-      Log.notice("Connection invalidated")
+      Log.debug("XPC connection closed")
     }
 
     newConnection.interruptionHandler = {
-      Log.debug("XPC connection interrupted")
       Log.setXPCSink(nil)
-      Log.notice("Connection interrupted")
+      Log.debug("XPC connection interrupted")
     }
 
     newConnection.resume()
-    Log.debug("accepted and resumed connection from pid=\(newConnection.processIdentifier)")
     return true
   }
 
@@ -71,91 +67,77 @@ class SMCFanHelper: NSObject, NSXPCListenerDelegate, SMCFanHelperProtocol, @unch
 
   private func ensureConnected() throws {
     if fanController == nil {
-      Log.debug("no existing connection, creating new SMCConnection")
       let conn = try SMCConnection()
       fanController = try FanController(connection: conn)
-      Log.debug("SMCConnection created successfully")
-    } else {
-      Log.debug("reusing existing SMCConnection")
+      Log.debug("SMC connection established, hardware config detected")
     }
   }
 
   // MARK: - SMCFanHelperProtocol
 
   func smcOpen(reply: @escaping (Bool, String?) -> Void) {
-    Log.debug("called")
     do {
       try ensureConnected()
-      Log.debug("success")
       reply(true, nil)
     } catch {
-      Log.debug("error=\(error)")
+      Log.warning("SMC open failed: \(error)")
       reply(false, error.localizedDescription)
     }
   }
 
   func smcClose(reply: @escaping (Bool, String?) -> Void) {
-    Log.debug("ENTER connectionActive=\(fanController != nil)")
     fanController = nil
-    Log.debug("connection released")
+    Log.debug("SMC connection released")
     reply(true, nil)
   }
 
   func smcReadKey(_ key: String, reply: @escaping (Bool, Float, String?) -> Void) {
-    Log.debug("ENTER key=\(key)")
     do {
       try ensureConnected()
       guard let fanController = fanController else {
-        Log.debug("no connection")
         reply(false, 0, "Connection not established")
         return
       }
       let (value, size) = try fanController.connection.readKey(key)
       let floatVal = SMCDataFormat.float(from: value, size: size)
-      Log.debug("key=\(key) size=\(size) bytes=\(value) float=\(floatVal)")
+      Log.debug("read \(key) = \(floatVal) (size=\(size) bytes=\(value))")
       reply(true, floatVal, nil)
     } catch {
-      Log.debug("key=\(key) error=\(error)")
+      Log.debug("read \(key) failed: \(error)")
       reply(false, 0, error.localizedDescription)
     }
   }
 
   func smcWriteKey(_ key: String, value: Float, reply: @escaping (Bool, String?) -> Void) {
-    Log.debug("ENTER key=\(key) value=\(value)")
     do {
       try ensureConnected()
       guard let fanController = fanController else {
-        Log.debug("no connection")
         reply(false, "Connection not established")
         return
       }
       let (_, size) = try fanController.connection.readKey(key)
       let writeVal = SMCDataFormat.bytes(from: value, size: size)
-      Log.debug("key=\(key) size=\(size) encodedBytes=\(writeVal)")
       try fanController.connection.writeKey(key, bytes: writeVal)
-      Log.debug("key=\(key) OK")
+      Log.debug("wrote \(key) = \(value) (size=\(size) bytes=\(writeVal))")
       reply(true, nil)
     } catch {
-      Log.debug("key=\(key) error=\(error)")
+      Log.debug("write \(key) = \(value) failed: \(error)")
       reply(false, error.localizedDescription)
     }
   }
 
   func smcGetFanCount(reply: @escaping (Bool, UInt, String?) -> Void) {
-    Log.debug("called")
     do {
       try ensureConnected()
       guard let fanController = fanController else {
-        Log.debug("no connection")
         reply(false, 0, "Connection not established")
         return
       }
       let (value, _) = try fanController.connection.readKey(SMCFanKey.count)
       let count = UInt(value[0])
-      Log.debug("count=\(count)")
       reply(true, count, nil)
     } catch {
-      Log.debug("error=\(error)")
+      Log.debug("failed to read fan count: \(error)")
       reply(false, 0, error.localizedDescription)
     }
   }
@@ -164,7 +146,6 @@ class SMCFanHelper: NSObject, NSXPCListenerDelegate, SMCFanHelperProtocol, @unch
     _ fanIndex: UInt,
     reply: @escaping (Bool, Float, Float, Float, Float, Bool, String?) -> Void
   ) {
-    Log.debug("ENTER fan=\(fanIndex)")
     do {
       try ensureConnected()
 
@@ -175,56 +156,45 @@ class SMCFanHelper: NSObject, NSXPCListenerDelegate, SMCFanHelperProtocol, @unch
 
       let manualMode: Bool
       do {
-        guard let fanController = fanController else {
-          throw SMCError.notOpen
-        }
+        guard let fanController = fanController else { throw SMCError.notOpen }
         let modeKey = SMCFanKey.key(fanController.config.modeKeyFormat, fan: Int(fanIndex))
         let (modeValue, _) = try fanController.connection.readKey(modeKey)
         manualMode = modeValue[0] == 1
       } catch {
-        Log.debug("failed to read mode key for fan \(fanIndex): \(error)")
+        Log.debug("could not read mode for fan \(fanIndex): \(error)")
         manualMode = false
       }
 
-      Log.debug(
-        "EXIT fan=\(fanIndex) actual=\(Int(actualRPM)) target=\(Int(targetRPM)) min=\(Int(minRPM)) max=\(Int(maxRPM)) manual=\(manualMode)"
-      )
+      Log.debug("fan \(fanIndex): actual=\(Int(actualRPM)) target=\(Int(targetRPM)) min=\(Int(minRPM)) max=\(Int(maxRPM)) manual=\(manualMode)")
       reply(true, actualRPM, targetRPM, minRPM, maxRPM, manualMode, nil)
     } catch {
-      Log.debug("fan=\(fanIndex) error=\(error)")
+      Log.debug("fan \(fanIndex) info read failed: \(error)")
       reply(false, 0, 0, 0, 0, false, error.localizedDescription)
     }
   }
 
   private func readFloat(fanIndex: UInt, keyFormat: String) -> Float? {
     let key = SMCFanKey.key(keyFormat, fan: Int(fanIndex))
-    guard let fanController = fanController else {
-      Log.debug("no connection for key=\(key)")
-      return nil
-    }
+    guard let fanController = fanController else { return nil }
     do {
       let (value, size) = try fanController.connection.readKey(key)
-      let result = SMCDataFormat.float(from: value, size: size)
-      Log.debug("key=\(key) size=\(size) bytes=\(value) float=\(result)")
-      return result
+      return SMCDataFormat.float(from: value, size: size)
     } catch {
-      Log.debug("key=\(key) error=\(error)")
+      Log.debug("read \(key) failed: \(error)")
       return nil
     }
   }
 
   func smcSetFanRPM(_ fanIndex: UInt, rpm: Float, reply: @escaping (Bool, String?) -> Void) {
-    Log.debug("ENTER fan=\(fanIndex) rpm=\(Int(rpm))")
     do {
       try ensureConnected()
     } catch {
-      Log.debug("connection error=\(error)")
+      Log.warning("connection failed setting fan \(fanIndex) to \(Int(rpm)) RPM: \(error)")
       reply(false, error.localizedDescription)
       return
     }
 
     guard let fanController = fanController else {
-      Log.debug("no connection")
       reply(false, "Connection not established")
       return
     }
@@ -235,74 +205,61 @@ class SMCFanHelper: NSObject, NSXPCListenerDelegate, SMCFanHelperProtocol, @unch
       let (modeBytes, _) = try fanController.connection.readKey(modeKey)
       alreadyManual = !modeBytes.isEmpty && modeBytes[0] == 1
     } catch {
-      Log.debug("failed to read mode key \(modeKey): \(error)")
+      Log.debug("could not read mode for fan \(fanIndex), assuming auto: \(error)")
       alreadyManual = false
     }
-
-    Log.debug("fan=\(fanIndex) rpm=\(Int(rpm)) alreadyManual=\(alreadyManual)")
 
     if !alreadyManual {
       do {
         let strategy = try fanController.enableManualMode(fanIndex: Int(fanIndex))
-        Log.info("enableManualMode: strategy=\(String(describing: strategy)) fan=\(fanIndex)")
+        Log.logger.info("enableManualMode: strategy=\(String(describing: strategy)) fan=\(fanIndex)", metadata: sensorSnapshot())
       } catch {
-        Log.debug("enableManualMode failed: \(error)")
+        Log.warning("enableManualMode failed for fan \(fanIndex): \(error)")
         reply(false, error.localizedDescription)
         return
       }
-    } else {
-      Log.debug("fan \(fanIndex) already in manual mode, skipping enableManualMode")
     }
 
     let key = SMCFanKey.key(SMCFanKey.target, fan: Int(fanIndex))
     let value = SMCDataFormat.bytes(from: rpm, size: 4)
-    Log.debug("writing target key=\(key) bytes=\(value)")
 
     do {
       try fanController.connection.writeKey(key, bytes: value)
-      Log.info("Set fan \(fanIndex) to \(Int(rpm)) RPM")
-      Log.debug("fan=\(fanIndex) rpm=\(Int(rpm)) OK")
+      Log.logger.info("Set fan \(fanIndex) to \(Int(rpm)) RPM", metadata: sensorSnapshot())
       reply(true, nil)
 
       let capturedFanIndex = fanIndex
       let capturedRPM = rpm
       Task.detached { [weak self] in
-        await self?.verifyFanSpeed(
-          fanIndex: capturedFanIndex, targetRPM: capturedRPM
-        )
+        await self?.verifyFanSpeed(fanIndex: capturedFanIndex, targetRPM: capturedRPM)
       }
     } catch {
-      Log.debug("fan=\(fanIndex) writeKey error=\(error)")
+      Log.warning("failed to write target RPM for fan \(fanIndex): \(error)")
       reply(false, error.localizedDescription)
     }
   }
 
-  /// Polls actual RPM until it reaches target (within 10%) or times out
   private func verifyFanSpeed(
     fanIndex: UInt,
     targetRPM: Float,
     timeout: TimeInterval = 30.0,
     interval: TimeInterval = 2.0
   ) async {
-    Log.debug("BEGIN fan=\(fanIndex) target=\(Int(targetRPM)) timeout=\(timeout)s")
     let startTime = Date()
     let tolerance: Float = 0.10
 
     while Date().timeIntervalSince(startTime) < timeout {
       guard let actualRPM = readFloat(fanIndex: fanIndex, keyFormat: SMCFanKey.actual) else {
-        Log.debug("failed to read actual RPM for fan \(fanIndex), aborting")
+        Log.debug("lost connection reading fan \(fanIndex) RPM during verify, aborting")
         return
       }
 
       let diff = abs(actualRPM - targetRPM) / max(targetRPM, 1)
-      Log.debug(
-        "fan=\(fanIndex) actual=\(Int(actualRPM)) target=\(Int(targetRPM)) diff=\(String(format: "%.1f", diff * 100))%"
-      )
+      Log.debug("fan \(fanIndex) ramping: \(Int(actualRPM))/\(Int(targetRPM)) RPM (\(String(format: "%.1f", diff * 100))% off)")
+
       if diff <= tolerance {
         let elapsed = Date().timeIntervalSince(startTime)
-        Log.info(
-          "Fan \(fanIndex) reached \(Int(actualRPM)) RPM (target: \(Int(targetRPM))) after \(String(format: "%.1f", elapsed))s"
-        )
+        Log.info("fan \(fanIndex) reached \(Int(actualRPM)) RPM (target \(Int(targetRPM))) in \(String(format: "%.1f", elapsed))s")
         return
       }
 
@@ -310,23 +267,20 @@ class SMCFanHelper: NSObject, NSXPCListenerDelegate, SMCFanHelperProtocol, @unch
     }
 
     if let actualRPM = readFloat(fanIndex: fanIndex, keyFormat: SMCFanKey.actual) {
-      Log.warning(
-        "Fan \(fanIndex) at \(Int(actualRPM)) RPM after 30s (target was \(Int(targetRPM)))")
+      Log.warning("fan \(fanIndex) at \(Int(actualRPM)) RPM after \(Int(timeout))s, target was \(Int(targetRPM))")
     }
   }
 
   func smcSetFanAuto(_ fanIndex: UInt, reply: @escaping (Bool, String?) -> Void) {
-    Log.debug("ENTER fan=\(fanIndex)")
     do {
       try ensureConnected()
     } catch {
-      Log.debug("connection error=\(error)")
+      Log.warning("connection failed resetting fan \(fanIndex) to auto: \(error)")
       reply(false, error.localizedDescription)
       return
     }
 
     guard let fanController = fanController else {
-      Log.debug("no connection")
       reply(false, "Connection not established")
       return
     }
@@ -335,89 +289,99 @@ class SMCFanHelper: NSObject, NSXPCListenerDelegate, SMCFanHelperProtocol, @unch
     do {
       let (numBytes, _) = try fanController.connection.readKey(SMCFanKey.count)
       fanCount = Int(numBytes[0])
-      Log.debug("fanCount=\(fanCount)")
     } catch {
-      Log.debug("failed to read fan count: \(error)")
+      Log.warning("failed to read fan count: \(error)")
       reply(false, "Failed to read fan count")
       return
     }
 
     var otherFansManual = 0
-
     for i in 0..<fanCount {
       if i == Int(fanIndex) { continue }
       let checkKey = SMCFanKey.key(fanController.config.modeKeyFormat, fan: i)
       do {
         let (checkBytes, _) = try fanController.connection.readKey(checkKey)
-        let isManual = !checkBytes.isEmpty && checkBytes[0] == 1
-        Log.debug("fan \(i) mode bytes=\(checkBytes) isManual=\(isManual)")
-        if isManual {
-          otherFansManual += 1
-        }
+        if !checkBytes.isEmpty && checkBytes[0] == 1 { otherFansManual += 1 }
       } catch {
-        Log.debug("failed to read mode for fan \(i): \(error)")
         continue
       }
     }
 
     let modeKey = SMCFanKey.key(fanController.config.modeKeyFormat, fan: Int(fanIndex))
-    Log.debug("writing modeKey=\(modeKey) bytes=[0]")
     do {
       try fanController.connection.writeKey(modeKey, bytes: [0])
-      Log.debug("modeKey write OK")
     } catch {
-      Log.warning("Failed to set auto mode: \(error)")
+      Log.warning("failed to set auto mode for fan \(fanIndex): \(error)")
     }
 
     let targetKey = SMCFanKey.key(SMCFanKey.target, fan: Int(fanIndex))
     let writeVal = SMCDataFormat.bytes(from: 0, size: 4)
-    Log.debug("writing targetKey=\(targetKey) bytes=\(writeVal)")
     do {
       try fanController.connection.writeKey(targetKey, bytes: writeVal)
-      Log.debug("target write OK")
     } catch {
-      Log.warning("Failed to reset target: \(error)")
+      Log.warning("failed to reset target for fan \(fanIndex): \(error)")
     }
 
     if otherFansManual > 0 {
-      Log.info("setFanAuto: fan \(fanIndex) to auto, \(otherFansManual) other fans still manual")
-      Log.debug("skipping Ftst reset, \(otherFansManual) other fans still manual")
+      Log.logger.info("setFanAuto: fan \(fanIndex) to auto, \(otherFansManual) other fans still manual", metadata: sensorSnapshot())
     } else if fanController.config.ftstAvailable {
       do {
         let (ftstBytes, _) = try fanController.connection.readKey(SMCFanKey.forceTest)
-        Log.debug("current Ftst bytes=\(ftstBytes)")
         if !ftstBytes.isEmpty, ftstBytes[0] == 1 {
           try fanController.resetFanControl()
-          Log.info("setFanAuto: Ftst reset succeeded")
-        } else {
-          Log.debug("Ftst already 0, no reset needed")
+          Log.logger.info("setFanAuto: Ftst reset, thermalmonitord reclaiming control", metadata: sensorSnapshot())
         }
       } catch {
         Log.warning("setFanAuto: Ftst reset failed: \(error)")
       }
     } else {
-      Log.info("setFanAuto: all fans auto, no Ftst on this hardware")
+      Log.logger.info("setFanAuto: all fans auto, no Ftst on this hardware", metadata: sensorSnapshot())
     }
 
-    Log.debug("fan=\(fanIndex) OK")
     reply(true, nil)
   }
 
+  private func sensorSnapshot() -> Logging.Logger.Metadata {
+    guard ultraDebug, let fc = fanController else { return [:] }
+    var meta: Logging.Logger.Metadata = [:]
+
+    if let (countBytes, _) = try? fc.connection.readKey(SMCFanKey.count) {
+      let count = Int(countBytes[0])
+      for i in 0..<count {
+        if let rpm = readFloat(fanIndex: UInt(i), keyFormat: SMCFanKey.actual) {
+          meta["fan.\(i).rpm"] = "\(Int(rpm))"
+        }
+        if let target = readFloat(fanIndex: UInt(i), keyFormat: SMCFanKey.target) {
+          meta["fan.\(i).target"] = "\(Int(target))"
+        }
+      }
+    }
+
+    for key in tempKeys {
+      if let (bytes, size) = try? fc.connection.readKey(key) {
+        let temp = SMCDataFormat.float(from: bytes, size: size)
+        if temp > 0 && temp < 150 {
+          meta["temp.\(key)"] = "\(String(format: "%.1f", temp))C"
+        }
+      }
+    }
+
+    return meta
+  }
+
   func smcEnumerateKeys(reply: @escaping ([String]) -> Void) {
-    Log.debug("called")
     DispatchQueue.global(qos: .userInitiated).async {
       do {
         try self.ensureConnected()
         guard let fanController = self.fanController else {
-          Log.debug("no connection")
           reply([])
           return
         }
         let keys = fanController.connection.enumerateKeys()
-        Log.debug("found \(keys.count) keys")
+        Log.debug("enumerated \(keys.count) SMC keys")
         reply(keys)
       } catch {
-        Log.debug("error=\(error)")
+        Log.debug("key enumeration failed: \(error)")
         reply([])
       }
     }

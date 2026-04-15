@@ -12,7 +12,10 @@ import SMCFanLogging
 @main
 struct SMCFanHelperMain {
   static func main() {
-    LogBootstrap.configure(subsystem: SMCFanConfiguration.default.helperBundleID)
+    LogBootstrap.configure(
+      subsystem: SMCFanConfiguration.default.helperBundleID,
+      extraHandlers: [XPCRelayLogHandler()]
+    )
     autoreleasepool {
       let helper = SMCFanHelper()
       helper.start()

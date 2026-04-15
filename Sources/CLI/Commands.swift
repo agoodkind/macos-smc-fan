@@ -8,11 +8,9 @@
 
 import Foundation
 
-/// Shared command implementations used by both ArgumentParser and simple CLI
 enum Commands {
 
   static func list() async throws {
-    Log.debug("called")
     let client = try XPCClient()
     try await client.open()
 
@@ -20,7 +18,6 @@ enum Commands {
     print("Fans: \(count)")
 
     for i in 0..<count {
-      Log.debug("querying fan \(i)")
       let info = try await client.getFanInfo(i)
       print(
         "Fan \(i): \(Int(info.actualRPM)) RPM " + "(Target: \(Int(info.targetRPM)), "
@@ -28,49 +25,42 @@ enum Commands {
           + "Mode: \(info.manualMode ? "Manual" : "Auto"))"
       )
     }
-    Log.debug("done")
   }
 
   static func set(fan: Int, rpm: Float) async throws {
-    Log.debug("BEGIN fan=\(fan) rpm=\(Int(rpm))")
+    Log.debug("setting fan \(fan) to \(Int(rpm)) RPM")
     let client = try XPCClient()
     try await client.open()
     try await client.setFanRPM(UInt(fan), rpm: rpm)
     print("Set fan \(fan) to \(Int(rpm)) RPM")
-    Log.debug("done")
   }
 
   static func auto(fan: Int) async throws {
-    Log.debug("BEGIN fan=\(fan)")
+    Log.debug("resetting fan \(fan) to auto")
     let client = try XPCClient()
     try await client.open()
     try await client.setFanAuto(UInt(fan))
     print("Set fan \(fan) to auto mode")
-    Log.debug("done")
   }
 
   static func read(key: String) async throws {
-    Log.debug("BEGIN key=\(key)")
     let client = try XPCClient()
     try await client.open()
     let value = try await client.readKey(key)
     print("\(key) = \(value)")
-    Log.debug("END key=\(key) value=\(value)")
   }
 
   static func keys(filter: String? = nil) async throws {
-    Log.debug("BEGIN filter=\(filter ?? "nil")")
     let client = try XPCClient()
     try await client.open()
     let allKeys = await client.enumerateKeys()
     let filtered = filter.map { f in allKeys.filter { $0.hasPrefix(f) } } ?? allKeys
-    Log.debug("total=\(allKeys.count) filtered=\(filtered.count)")
+    Log.debug("enumerated \(allKeys.count) keys, \(filtered.count) matching filter")
     print("Keys: \(filtered.count)\(filter.map { " (filter: \($0))" } ?? "")")
     for key in filtered {
       let value = try? await client.readKey(key)
       print("  \(key) = \(value.map { String($0) } ?? "?")")
     }
-    Log.debug("done")
   }
 
   static func printUsage() {

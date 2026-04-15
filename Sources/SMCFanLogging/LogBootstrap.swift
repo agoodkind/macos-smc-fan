@@ -2,7 +2,7 @@
 //  LogBootstrap.swift
 //  SMCFanLogging
 //
-//  Created by Alex Goodkind <alex@goodkind.io> on 2026-04-14.
+//  Created by Alex Goodkind <alex@goodkind.io> on 2026-04-15.
 //  Copyright © 2026
 //
 
@@ -13,7 +13,7 @@ import os
 
 public enum LogBootstrap {
 
-  public static func configure(subsystem: String) {
+  public static func configure(subsystem: String, extraHandlers: [any LogHandler] = []) {
     let debugEnabled = ProcessInfo.processInfo.environment["SMCFAN_DEBUG"] != nil
     let level: Logging.Logger.Level = debugEnabled ? .debug : .info
 
@@ -22,7 +22,9 @@ public enum LogBootstrap {
       json.logLevel = level
       var oslog = OSLogBridge(subsystem: subsystem, category: label)
       oslog.logLevel = level
-      return MultiplexLogHandler([json, oslog])
+      var handlers: [any LogHandler] = [json, oslog]
+      handlers.append(contentsOf: extraHandlers)
+      return MultiplexLogHandler(handlers)
     }
   }
 }
