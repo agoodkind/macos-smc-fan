@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>chipName</key>
+	<string>M5 Max</string>
+	<key>modelIdentifier</key>
+	<string>Mac17,7</string>
+	<key>modeKeyFormat</key>
+	<string>F%dmd</string>
+	<key>ftstPresent</key>
+	<false/>
+	<key>fanCount</key>
+	<integer>2</integer>
+	<key>reportedMinRPM</key>
+	<integer>2317</integer>
+	<key>reportedMaxRPM</key>
+	<integer>7826</integer>
+	<key>belowMinBehavior</key>
+	<string>clampedToMin</string>
+	<key>autoModeTarget</key>
+	<string>zeroOrMinRPM</string>
+	<key>rpmTolerance</key>
+	<integer>200</integer>
+	<key>manualWakesOtherFans</key>
+	<false/>
+	<key>rampFromIdleSeconds</key>
+	<integer>12</integer>
+</dict>
+</plist>

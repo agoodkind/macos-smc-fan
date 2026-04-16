@@ -50,9 +50,11 @@ final class IntegrationTests: XCTestCase {
 
     // Reset all fans to auto before each test
     Self.resetAllFansToAuto()
+    logThermalState("before")
   }
 
   override func tearDown() {
+    logThermalState("after")
     // Reset all fans to auto after each test
     Self.resetAllFansToAuto()
     helperConnection?.invalidate()
@@ -942,6 +944,36 @@ final class IntegrationTests: XCTestCase {
     }
 
     wait(for: [expectation], timeout: 10.0)
+  }
+
+  // MARK: - Thermal Logging
+
+  private static let tempKeys = [
+    "Ts0P", "Ts1P",  // M5 Max
+    "Tp09", "Tp0T",  // Apple Silicon (some models)
+    "TC0P", "TC0p",  // Intel
+    "Tg0f", "Tw0P",  // GPU, wireless
+  ]
+
+  private func logThermalState(_ phase: String) {
+    let fanState = runCLISync(["list"])
+    var temps: [String] = []
+    for key in Self.tempKeys {
+      let result = runCLISync(["read", key])
+      if result.exitCode == 0,
+        let valueStr = result.output.components(separatedBy: " = ").last?.trimmingCharacters(
+          in: .whitespacesAndNewlines),
+        let value = Float(valueStr), value > 0, value < 150
+      {
+        temps.append("\(key)=\(String(format: "%.1f", value))C")
+      }
+    }
+    let fanLines = fanState.output.components(separatedBy: "\n")
+      .filter { $0.contains("Fan ") }
+      .map { $0.trimmingCharacters(in: .whitespaces) }
+      .joined(separator: " | ")
+    fputs("[thermal] \(phase): \(fanLines) temps: \(temps.joined(separator: " "))\n", stderr)
+    fflush(stderr)
   }
 
   // MARK: - Helpers

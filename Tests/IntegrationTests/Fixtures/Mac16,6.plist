@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>chipName</key>
+	<string>M4 Max</string>
+	<key>modelIdentifier</key>
+	<string>Mac16,6</string>
+	<key>modeKeyFormat</key>
+	<string>F%dMd</string>
+	<key>ftstPresent</key>
+	<true/>
+	<key>fanCount</key>
+	<integer>2</integer>
+	<key>reportedMinRPM</key>
+	<integer>2500</integer>
+	<key>reportedMaxRPM</key>
+	<integer>8500</integer>
+	<key>belowMinBehavior</key>
+	<string>preserved</string>
+	<key>autoModeTarget</key>
+	<string>zeroOrMinRPM</string>
+	<key>rpmTolerance</key>
+	<integer>300</integer>
+	<key>manualWakesOtherFans</key>
+	<true/>
+	<key>rampFromIdleSeconds</key>
+	<integer>12</integer>
+</dict>
+</plist>

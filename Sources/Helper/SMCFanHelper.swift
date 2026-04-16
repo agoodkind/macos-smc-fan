@@ -15,7 +15,12 @@ import Logging
 
 private let ultraDebug = ProcessInfo.processInfo.environment["SMCFAN_ULTRA_DEBUG"] != nil
 
-private let tempKeys = ["Tp09", "Tp0T", "Tg0f", "Tw0P", "TW0P", "TC0P", "TC0p"]
+private let tempKeys = [
+  "Ts0P", "Ts1P",  // M5 Max
+  "Tp09", "Tp0T",  // Apple Silicon (some models)
+  "TC0P", "TC0p",  // Intel
+  "Tg0f", "Tw0P",  // GPU, wireless
+]
 
 class SMCFanHelper: NSObject, NSXPCListenerDelegate, SMCFanHelperProtocol, @unchecked Sendable {
   private let listener: NSXPCListener

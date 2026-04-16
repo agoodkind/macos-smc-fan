@@ -73,6 +73,7 @@ let package = Package(
         .testTarget(
             name: "IntegrationTests",
             path: "Tests/IntegrationTests",
+            exclude: ["Fixtures"],
             swiftSettings: [
                 .enableUpcomingFeature("StrictConcurrency")
             ]

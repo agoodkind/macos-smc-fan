@@ -9,16 +9,16 @@
 import Foundation
 
 /// Hardware-specific behavioral expectations for integration tests.
-/// Each model describes how the SMC firmware actually behaves,
-/// which varies across Apple Silicon generations.
+/// Each model's expectations are stored as a plist in Tests/IntegrationTests/Fixtures/.
 ///
 /// To add a new model:
 /// 1. Run `sudo smcfan list` to see fan count, min/max RPM
 /// 2. Run `sudo smcfan read F0md` and `sudo smcfan read F0Md` to find mode key casing
 /// 3. Run `sudo smcfan read Ftst` to check Ftst availability
 /// 4. Run `sudo smcfan set 0 1000` then `sudo smcfan list` to observe below-min behavior
-/// 5. Add a new static let below and append to allKnown
-struct HardwareExpectations: Sendable {
+/// 5. Copy an existing plist in Fixtures/, name it with your hw.model (e.g., Mac18,3.plist)
+/// 6. Fill in the values and submit a PR
+struct HardwareExpectations: Codable, Sendable {
   let chipName: String
   let modelIdentifier: String
   let modeKeyFormat: String
@@ -29,24 +29,18 @@ struct HardwareExpectations: Sendable {
   let belowMinBehavior: BelowMinBehavior
   let autoModeTarget: AutoModeTargetBehavior
   let rpmTolerance: Int
-
-  /// Whether setting one fan to manual wakes other fans to auto min.
-  /// On M3/M4 with Ftst=1, all fans wake. On M5 without Ftst, only the target fan is affected.
   let manualWakesOtherFans: Bool
-
-  /// Seconds to wait for fan to ramp from 0 RPM to target before checking actual RPM.
-  /// Fans starting from 0 (cold idle) need more time than fans already spinning.
   let rampFromIdleSeconds: TimeInterval
 }
 
-enum BelowMinBehavior: Sendable {
+enum BelowMinBehavior: String, Codable, Sendable {
   /// Firmware preserves the exact target value written (e.g., Target: 1000)
   case preserved
   /// Firmware clamps target to hardware minimum (e.g., Target: 2317)
   case clampedToMin
 }
 
-enum AutoModeTargetBehavior: Sendable {
+enum AutoModeTargetBehavior: String, Codable, Sendable {
   /// Target shows 0 (system control)
   case zero
   /// Target shows the hardware min RPM (thermalmonitord sets it)
@@ -57,44 +51,29 @@ enum AutoModeTargetBehavior: Sendable {
 
 extension HardwareExpectations {
 
-  static let m4Max = HardwareExpectations(
-    chipName: "M4 Max",
-    modelIdentifier: "Mac16,6",
-    modeKeyFormat: "F%dMd",
-    ftstPresent: true,
-    fanCount: 2,
-    reportedMinRPM: 2500,
-    reportedMaxRPM: 8500,
-    belowMinBehavior: .preserved,
-    autoModeTarget: .zeroOrMinRPM,
-    rpmTolerance: 300,
-    manualWakesOtherFans: true,
-    rampFromIdleSeconds: 12
-  )
-
-  static let m5Max = HardwareExpectations(
-    chipName: "M5 Max",
-    modelIdentifier: "Mac17,7",
-    modeKeyFormat: "F%dmd",
-    ftstPresent: false,
-    fanCount: 2,
-    reportedMinRPM: 2317,
-    reportedMaxRPM: 7826,
-    belowMinBehavior: .clampedToMin,
-    autoModeTarget: .zeroOrMinRPM,
-    rpmTolerance: 200,
-    manualWakesOtherFans: false,
-    rampFromIdleSeconds: 8
-  )
-
-  static let allKnown: [HardwareExpectations] = [m4Max, m5Max]
-
+  /// Load expectations for the current hardware from the Fixtures directory.
+  /// Returns nil if no plist exists for this model.
   static func detect() -> HardwareExpectations? {
-    let model = currentModelIdentifier()
-    return allKnown.first { $0.modelIdentifier == model }
+    let model = currentModel
+    let fixturesDir = URL(fileURLWithPath: #filePath)
+      .deletingLastPathComponent()
+      .appendingPathComponent("Fixtures")
+    let plistURL = fixturesDir.appendingPathComponent("\(model).plist")
+
+    guard FileManager.default.fileExists(atPath: plistURL.path) else {
+      return nil
+    }
+
+    do {
+      let data = try Data(contentsOf: plistURL)
+      return try PropertyListDecoder().decode(HardwareExpectations.self, from: data)
+    } catch {
+      fputs("[HardwareExpectations] Failed to decode \(plistURL.lastPathComponent): \(error)\n", stderr)
+      return nil
+    }
   }
 
-  private static func currentModelIdentifier() -> String {
+  static var currentModel: String {
     var size = 0
     sysctlbyname("hw.model", nil, &size, nil, 0)
     var model = [CChar](repeating: 0, count: size)
@@ -103,9 +82,5 @@ extension HardwareExpectations {
       decoding: model.prefix(while: { $0 != 0 }).map { UInt8($0) },
       as: UTF8.self
     )
-  }
-
-  static var currentModel: String {
-    currentModelIdentifier()
   }
 }
