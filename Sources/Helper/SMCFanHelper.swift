@@ -13,8 +13,6 @@ import SMCFanKit
 
 import Logging
 
-private let ultraDebug = ProcessInfo.processInfo.environment["SMCFAN_ULTRA_DEBUG"] != nil
-
 private let tempKeys = [
   "Ts0P", "Ts1P",  // M5 Max
   "Tp09", "Tp0T",  // Apple Silicon (some models)
@@ -347,7 +345,7 @@ class SMCFanHelper: NSObject, NSXPCListenerDelegate, SMCFanHelperProtocol, @unch
   }
 
   private func sensorSnapshot() -> Logging.Logger.Metadata {
-    guard ultraDebug, let fc = fanController else { return [:] }
+    guard let fc = fanController else { return [:] }
     var meta: Logging.Logger.Metadata = [:]
 
     if let (countBytes, _) = try? fc.connection.readKey(SMCFanKey.count) {

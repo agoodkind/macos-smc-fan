@@ -31,6 +31,9 @@ install: all uninstall-helper
 	sudo rm -rf /Applications/SMCFanHelper.app
 	sudo cp -R "$(PRODUCTS_DIR)/SMCFanHelper.app" /Applications/
 	sudo chown -R root:wheel /Applications/SMCFanHelper.app
+	@echo "Setting up log rotation..."
+	sudo mkdir -p /Library/Logs/smcfan
+	sudo cp Config/newsyslog.conf /etc/newsyslog.d/smcfan.conf
 	@echo "Registering helper..."
 	/Applications/SMCFanHelper.app/Contents/MacOS/SMCFanInstaller
 	@echo "Verifying..."

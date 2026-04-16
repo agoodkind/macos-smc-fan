@@ -12,16 +12,15 @@ import Logging
 import os
 import CommonCrypto
 
-// MARK: - XDG Paths
+// MARK: - Log Paths
 
-private enum XDG {
-  static var stateHome: String {
-    ProcessInfo.processInfo.environment["XDG_STATE_HOME"]
-      ?? NSHomeDirectory() + "/.local/state"
-  }
+private enum LogPaths {
+  static let logDir = "/Library/Logs/smcfan"
+  static let daemonLogPath = logDir + "/daemon.jsonl"
+}
 
-  static var logDir: String { stateHome + "/smcfan" }
-  static var daemonLogPath: String { logDir + "/daemon.log" }
+public enum SMCFanLogPaths {
+  public static var daemonLog: String { LogPaths.daemonLogPath }
 }
 
 // MARK: - Build Info
@@ -60,15 +59,18 @@ public enum LogBootstrap {
     let fileHandle = openLogFile()
 
     LoggingSystem.bootstrap { label in
-      // 1. File: always on, all levels, JSONL
-      var file = JSONLogger(label: label, fileHandle: fileHandle)
-      file.logLevel = .trace
-
-      // 2. os_log: always on, all levels, Console.app
+      // 1. os_log: always on, all levels, Console.app
       var oslog = OSLogBridge(subsystem: subsystem, category: label)
       oslog.logLevel = .trace
 
-      var handlers: [any LogHandler] = [file, oslog]
+      var handlers: [any LogHandler] = [oslog]
+
+      // 2. File: only if writable (daemon runs as root, CLI may not have access)
+      if let fileHandle {
+        var file = JSONLogger(label: label, fileHandle: fileHandle)
+        file.logLevel = .trace
+        handlers.append(file)
+      }
 
       // 3. stderr: only with SMCFAN_DEBUG
       if stderrEnabled {
@@ -88,16 +90,16 @@ public enum LogBootstrap {
     }
   }
 
-  private static func openLogFile() -> FileHandle {
-    let dir = XDG.logDir
-    let path = XDG.daemonLogPath
+  private static func openLogFile() -> FileHandle? {
+    let dir = LogPaths.logDir
+    let path = LogPaths.daemonLogPath
     try? FileManager.default.createDirectory(
       atPath: dir, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
     if !FileManager.default.fileExists(atPath: path) {
       FileManager.default.createFile(atPath: path, contents: nil, attributes: [.posixPermissions: 0o600])
     }
     guard let fh = FileHandle(forWritingAtPath: path) else {
-      return .standardError
+      return nil
     }
     fh.seekToEndOfFile()
     return fh
