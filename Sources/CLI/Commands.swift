@@ -7,14 +7,8 @@
 //
 
 import Foundation
+import SMCFanKit
 import SMCFanLogging
-
-private let tempKeys = [
-  "Ts0P", "Ts1P",  // M5 Max
-  "Tp09", "Tp0T",  // Apple Silicon (some models)
-  "TC0P", "TC0p",  // Intel
-  "Tg0f", "Tw0P",  // GPU, wireless
-]
 
 enum Commands {
 
@@ -34,14 +28,52 @@ enum Commands {
       )
     }
 
-    var temps: [String] = []
-    for key in tempKeys {
-      if let value = try? await client.readKey(key), value > 0, value < 150 {
-        temps.append("\(key): \(String(format: "%.1f", value))C")
+    let temps = await readSensors(client: client, type: .temperature)
+    if !temps.isEmpty {
+      let summary = temps.map { "\($0.sensor.key): \(String(format: "%.1f", $0.value))C" }
+        .joined(separator: ", ")
+      print("Temps: \(summary)")
+    }
+  }
+
+  static func sensors() async throws {
+    let client = try XPCClient()
+    try await client.open()
+
+    let allKeys = SensorCatalog.keysForCurrentHardware()
+    var readings: [(sensor: SensorKey, value: Float)] = []
+
+    for sensor in allKeys {
+      if let value = try? await client.readKey(sensor.key), value != 0 {
+        readings.append((sensor, value))
       }
     }
-    if !temps.isEmpty {
-      print("Temps: \(temps.joined(separator: ", "))")
+
+    if readings.isEmpty {
+      print("No sensors found.")
+      return
+    }
+
+    let grouped = Dictionary(grouping: readings, by: { $0.sensor.type })
+
+    for type in [SensorType.temperature, .voltage, .power, .current] {
+      guard let sensors = grouped[type], !sensors.isEmpty else { continue }
+      print("\n\(type.rawValue):")
+      let byGroup = Dictionary(grouping: sensors, by: { $0.sensor.group })
+      for group in [SensorGroup.cpu, .gpu, .memory, .system] {
+        guard let items = byGroup[group], !items.isEmpty else { continue }
+        print("  \(group.rawValue):")
+        for item in items {
+          let unit: String
+          switch item.sensor.type {
+          case .temperature: unit = "C"
+          case .voltage: unit = "V"
+          case .power: unit = "W"
+          case .current: unit = "A"
+          }
+          print("    \(item.sensor.key) \(item.sensor.name): \(String(format: "%.2f", item.value)) \(unit)")
+        }
+      }
     }
   }
 
@@ -103,11 +135,26 @@ enum Commands {
     print("")
     print("Commands:")
     print("  list              List all fans with current status and temps")
+    print("  sensors           Show all available sensor readings")
     print("  set <fan> <rpm>   Set fan speed to specified RPM")
     print("  auto <fan>        Return fan to automatic control")
     print("  read <key>        Read value of SMC key")
     print("  keys [prefix]     Enumerate all SMC keys (optionally filter by prefix)")
     print("  log               Show daemon log file (last 20 lines)")
     print("  help, -h, --help  Show this help message")
+  }
+
+  // MARK: - Helpers
+
+  private static func readSensors(
+    client: XPCClient, type: SensorType
+  ) async -> [(sensor: SensorKey, value: Float)] {
+    var results: [(sensor: SensorKey, value: Float)] = []
+    for sensor in SensorCatalog.keysForCurrentHardware() where sensor.type == type {
+      if let value = try? await client.readKey(sensor.key), value > 0, value < 150 {
+        results.append((sensor, value))
+      }
+    }
+    return results
   }
 }

@@ -58,6 +58,9 @@ struct SMCFan {
       case "keys":
         try await Commands.keys(filter: args.count >= 3 ? args[2] : nil)
 
+      case "sensors":
+        try await Commands.sensors()
+
       case "log":
         Commands.showLog()
 

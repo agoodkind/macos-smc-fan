@@ -948,24 +948,16 @@ final class IntegrationTests: XCTestCase {
 
   // MARK: - Thermal Logging
 
-  private static let tempKeys = [
-    "Ts0P", "Ts1P",  // M5 Max
-    "Tp09", "Tp0T",  // Apple Silicon (some models)
-    "TC0P", "TC0p",  // Intel
-    "Tg0f", "Tw0P",  // GPU, wireless
-  ]
-
   private func logThermalState(_ phase: String) {
     let fanState = runCLISync(["list"])
     var temps: [String] = []
-    for key in Self.tempKeys {
-      let result = runCLISync(["read", key])
-      if result.exitCode == 0,
-        let valueStr = result.output.components(separatedBy: " = ").last?.trimmingCharacters(
-          in: .whitespacesAndNewlines),
-        let value = Float(valueStr), value > 0, value < 150
-      {
-        temps.append("\(key)=\(String(format: "%.1f", value))C")
+    let sensorResult = runCLISync(["sensors"])
+    if sensorResult.exitCode == 0 {
+      for line in sensorResult.output.components(separatedBy: "\n") {
+        let trimmed = line.trimmingCharacters(in: .whitespaces)
+        if trimmed.hasSuffix("C") && trimmed.contains(":") {
+          temps.append(trimmed)
+        }
       }
     }
     let fanLines = fanState.output.components(separatedBy: "\n")

@@ -13,13 +13,6 @@ import SMCFanKit
 
 import Logging
 
-private let tempKeys = [
-  "Ts0P", "Ts1P",  // M5 Max
-  "Tp09", "Tp0T",  // Apple Silicon (some models)
-  "TC0P", "TC0p",  // Intel
-  "Tg0f", "Tw0P",  // GPU, wireless
-]
-
 class SMCFanHelper: NSObject, NSXPCListenerDelegate, SMCFanHelperProtocol, @unchecked Sendable {
   private let listener: NSXPCListener
   private var fanController: FanController?
@@ -360,11 +353,11 @@ class SMCFanHelper: NSObject, NSXPCListenerDelegate, SMCFanHelperProtocol, @unch
       }
     }
 
-    for key in tempKeys {
-      if let (bytes, size) = try? fc.connection.readKey(key) {
+    for sensor in SensorCatalog.keysForCurrentHardware() where sensor.type == .temperature {
+      if let (bytes, size) = try? fc.connection.readKey(sensor.key) {
         let temp = SMCDataFormat.float(from: bytes, size: size)
         if temp > 0 && temp < 150 {
-          meta["temp.\(key)"] = "\(String(format: "%.1f", temp))C"
+          meta["temp.\(sensor.key)"] = "\(String(format: "%.1f", temp))C"
         }
       }
     }
