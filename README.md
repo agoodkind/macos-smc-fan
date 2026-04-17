@@ -464,18 +464,21 @@ Each row shows a tested transition with measured results.
 
 #### Edge Case Behavior
 
-| Requested | Reported Limits | Actual Result | Notes |
-| --------- | --------------- | ------------- | ----- |
-| 0 RPM | min=2317 | 0 RPM | Fan stops completely |
-| 1000 RPM | min=2317 | ~1000 RPM | Below "min" works |
-| 10000 RPM | max=7826 | ~8560 RPM | Hardware caps above reported max |
+| Hardware | Requested | Reported Limits | Actual Result | Notes |
+| -------- | --------- | --------------- | ------------- | ----- |
+| M4 Max | 0 RPM | min=2317 | 0 RPM | Fan stops completely |
+| M4 Max | 1000 RPM | min=2317 | ~1000 RPM | Below "min" works |
+| M4 Max | 10000 RPM | max=7826 | ~8560 RPM | Hardware spins above reported max |
+| M5 Max | 0 RPM | min=2317 | 2317 RPM | Firmware clamps below-min up to min |
+| M5 Max | 1000 RPM | min=2317 | 2317 RPM | Firmware clamps below-min up to min |
+| M5 Max | 10000 RPM | max=7826 | ~9600 RPM | Target stays at 10000, fan spins to physical max |
 
 **Key Observations:**
 
-- The reported min/max values are thermal management thresholds, not hardware limits
-- Hardware can exceed reported max (~8560 actual vs 7826 reported)
-- Hardware can go below reported min (1000 actual vs 2317 reported)
-- Setting 0 RPM in manual mode stops the fan completely
+- The reported min/max values are thermal management thresholds, not hardware limits.
+- On M4 Max, hardware can exceed reported max (~8560 actual vs 7826 reported) and can go below reported min (1000 actual vs 2317 reported).
+- On M5 Max, hardware can exceed reported max (target 10000 accepted, fan spins to ~9600 RPM). Below-min targets are clamped up to the reported min.
+- Setting 0 RPM in manual mode stops the fan completely on M4 Max. On M5 Max the firmware clamps the target to the reported min instead.
 
 ### System Mode and 0 RPM
 
@@ -603,7 +606,7 @@ The following claims require additional verification, and the methodologies used
 | M1 | **Partial** | Direct mode writes observed without `Ftst` unlock. |
 | M2 | **Untested** | Expected to be consistent with M1 or M3/M4. |
 | M3 / M4 Max | **Tested** | Mode key `F%dMd` (uppercase). `Ftst` present. Unlock poll sequence required. |
-| M5 Max (Mac17,7) | **Tested** | Mode key `F%dmd` (lowercase). `Ftst` absent. Direct mode writes without unlock. Firmware clamps below-min targets to reported min (2317). Auto mode target is min RPM, not 0. |
+| M5 Max (Mac17,7) | **Tested** | Mode key `F%dmd` (lowercase). `Ftst` absent. Direct mode writes without unlock. Firmware clamps below-min targets to reported min (2317). Above-max targets are NOT clamped (10000 requested, fan spins to physical ~9600 RPM). Auto mode target is min RPM, not 0. |
 | M5 / M5 Pro | **Untested** | Expected to match M5 Max behavior. |
 | T2 (Intel) | **Untested** | Mode 2 behavior referenced in prior work but not verified. |
 | Mac Studio / Mac Pro | **Untested** | Multi-fan behavior on desktop hardware. |
