@@ -1,4 +1,4 @@
-// Copy to local.xcconfig and fill in your values
+// Copy to Config/local.xcconfig and fill in your values
 // Find CERT_ID with: security find-identity -v -p codesigning
 // Find DEVELOPMENT_TEAM at: https://developer.apple.com/account
 

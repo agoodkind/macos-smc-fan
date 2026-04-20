@@ -15,6 +15,12 @@ Package.resolved
 
 # Local configuration (developer-specific)
 App/Config/local.xcconfig
+Config/local.xcconfig
+
+# Editors (personal / machine-specific; use `git add -f` to share team defaults)
+.vscode/
+.idea/
+*.code-workspace
 
 # Misc
 *.profraw
