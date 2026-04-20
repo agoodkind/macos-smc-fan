@@ -6,95 +6,98 @@
 //  Copyright © 2026
 //
 
+import AppLog
 import Foundation
 import Security
 import ServiceManagement
 
+private let log = AppLog.make(category: "Installer")
+
 @main
 struct SMCFanInstaller {
-  static func main() {
-    let config = SMCFanConfiguration.default
-    print("Installing privileged helper: \(config.helperBundleID)")
+    static func main() {
+        AppLog.bootstrap(subsystem: "io.goodkind.fan")
+        BuildInfo.commit = generatedGitCommit
+        BuildInfo.version = generatedGitVersion
+        BuildInfo.dirty = generatedGitDirty
 
-    if #available(macOS 13.0, *) {
-      do {
-        let plistName = "\(config.helperBundleID).plist"
-        print("Bundle path: \(Bundle.main.bundlePath)")
-        print("Bundle ID: \(Bundle.main.bundleIdentifier ?? "nil")")
-        print("Looking for plist: \(plistName)")
-        let daemonPlistPath =
-          Bundle.main.bundlePath + "/Contents/Library/LaunchDaemons/\(plistName)"
-        print("Expected path: \(daemonPlistPath)")
-        print("File exists: \(FileManager.default.fileExists(atPath: daemonPlistPath))")
-        let helperPath = Bundle.main.bundlePath + "/Contents/MacOS/\(config.helperBundleID)"
-        print("Helper path: \(helperPath)")
-        print("Helper exists: \(FileManager.default.fileExists(atPath: helperPath))")
+        let config = SMCFanConfiguration.default
+        log.notice("installer.started bundleID=\(config.helperBundleID, privacy: .public)")
 
-        let service = SMAppService.daemon(plistName: plistName)
-        let status = service.status
-        print("Current status: \(status)")
+        if #available(macOS 13.0, *) {
+            let plistName = "\(config.helperBundleID).plist"
+            log.info("installer.bundle.path path=\(Bundle.main.bundlePath, privacy: .public)")
+            log.info("installer.plist.name name=\(plistName, privacy: .public)")
 
-        switch status {
-        case .enabled:
-          print("Helper already installed and running.")
-          return
-        case .notFound:
-          print("Status notFound, attempting registration anyway...")
-        case .notRegistered:
-          print("Registering daemon...")
-        case .requiresApproval:
-          print("Opening System Settings for approval...")
-          SMAppService.openSystemSettingsLoginItems()
-          print("Please enable SMCFanHelper in Login Items, then run again.")
-          exit(0)
-        @unknown default:
-          print("Unknown status, attempting registration...")
+            let daemonPlistPath =
+                Bundle.main.bundlePath + "/Contents/Library/LaunchDaemons/\(plistName)"
+            log.info("installer.plist.path path=\(daemonPlistPath, privacy: .public) exists=\(FileManager.default.fileExists(atPath: daemonPlistPath), privacy: .public)")
+
+            let helperPath = Bundle.main.bundlePath + "/Contents/MacOS/\(config.helperBundleID)"
+            log.info("installer.helper.path path=\(helperPath, privacy: .public) exists=\(FileManager.default.fileExists(atPath: helperPath), privacy: .public)")
+
+            let service = SMAppService.daemon(plistName: plistName)
+            let status = service.status
+            log.info("installer.service.status status=\(String(describing: status), privacy: .public)")
+
+            switch status {
+            case .enabled:
+                log.notice("installer.already.enabled")
+                return
+            case .notFound:
+                log.info("installer.status.notFound attempting=registration")
+            case .notRegistered:
+                log.info("installer.status.notRegistered action=register")
+            case .requiresApproval:
+                log.notice("installer.requires.approval action=openSystemSettings")
+                SMAppService.openSystemSettingsLoginItems()
+                return
+            @unknown default:
+                log.info("installer.status.unknown attempting=registration")
+            }
+
+            do {
+                try service.register()
+                log.notice("installer.registered")
+            } catch {
+                log.error("installer.register.failed error=\(error.localizedDescription, privacy: .public)")
+                SMAppService.openSystemSettingsLoginItems()
+            }
+
+            log.notice("installer.waiting.approval")
+            while service.status != .enabled {
+                log.debug("installer.status.polling status=\(String(describing: service.status), privacy: .public)")
+                sleep(1)
+            }
+
+            log.notice("installer.enabled")
+            return
         }
 
         do {
-          try service.register()
+            let authRef = try Authorization.requestInstallRights()
+            defer { AuthorizationFree(authRef, []) }
+
+            var error: Unmanaged<CFError>?
+            let success = SMJobBless(
+                kSMDomainSystemLaunchd,
+                config.helperBundleID as CFString,
+                authRef,
+                &error
+            )
+
+            guard success else {
+                if let err = error?.takeRetainedValue() {
+                    log.error("installer.smjobless.failed error=\(String(describing: err), privacy: .public)")
+                }
+                exit(1)
+            }
+
+            log.notice("installer.smjobless.succeeded")
+
         } catch {
-          print("Registration error: \(error.localizedDescription)")
-          print("Opening System Settings for manual approval...")
-          SMAppService.openSystemSettingsLoginItems()
+            log.error("installer.auth.failed error=\(error.localizedDescription, privacy: .public)")
+            exit(1)
         }
-
-        print("Waiting for approval... Please enable SMCFanHelper in System Settings.")
-        while service.status != .enabled {
-          print("Current status: \(service.status). Waiting...")
-          sleep(1)
-        }
-
-        print("Helper installed and enabled!")
-      }
-      return
     }
-
-    // Fallback for macOS < 13
-    do {
-      let authRef = try Authorization.requestInstallRights()
-      defer { AuthorizationFree(authRef, []) }
-
-      var error: Unmanaged<CFError>?
-      let success = SMJobBless(
-        kSMDomainSystemLaunchd,
-        config.helperBundleID as CFString,
-        authRef,
-        &error
-      )
-
-      guard success else {
-        if let err = error?.takeRetainedValue() {
-          print("SMJobBless failed: \(err)")
-        }
-        exit(1)
-      }
-
-      print("Helper installed successfully!")
-
-    } catch {
-      print("Error: \(error.localizedDescription)")
-      exit(1)
-    }
-  }
 }

@@ -6,22 +6,19 @@
 //  Copyright © 2026
 //
 
+import AppLog
 import Foundation
-import SMCFanLogging
 
 @main
 struct SMCFanHelperMain {
-  static func main() {
-    BuildInfo.commit = generatedGitCommit
-    BuildInfo.version = generatedGitVersion
-    BuildInfo.dirty = generatedGitDirty
-    LogBootstrap.configure(
-      subsystem: SMCFanConfiguration.default.helperBundleID,
-      extraHandlers: [XPCRelayLogHandler()]
-    )
-    autoreleasepool {
-      let helper = SMCFanHelper()
-      helper.start()
+    static func main() {
+        AppLog.bootstrap(subsystem: "io.goodkind.fan")
+        BuildInfo.commit = generatedGitCommit
+        BuildInfo.version = generatedGitVersion
+        BuildInfo.dirty = generatedGitDirty
+        autoreleasepool {
+            let helper = SMCFanHelper()
+            helper.start()
+        }
     }
-  }
 }

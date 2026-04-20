@@ -4,7 +4,7 @@ CONFIGURATION = Release
 BUILD_DIR = build
 PRODUCTS_DIR = Products
 
-.PHONY: all clean install uninstall-helper generate-project test test-integration format
+.PHONY: all clean install uninstall-helper generate-project test test-integration format log-audit
 
 generate-project:
 	xcodegen generate
@@ -26,14 +26,28 @@ all: generate-project
 	@cp -R "$(BUILD_DIR)/Build/Products/$(CONFIGURATION)/SMCFanHelper.app" "$(PRODUCTS_DIR)/"
 	@cp "$(BUILD_DIR)/Build/Products/$(CONFIGURATION)/smcfan" "$(PRODUCTS_DIR)/"
 
+log-audit:
+	@set -e; \
+	echo "scanning for forbidden output calls..."; \
+	! grep -rnE '(^|[^a-zA-Z_])(print|NSLog|debugPrint|dump)\(' Sources/ \
+		--include='*.swift' --exclude-dir=AppLog --exclude='CLIOut.swift' \
+		| grep -v 'CLIOut\.print\|CLIOut\.err' \
+	&& echo "  output calls: OK"; \
+	echo "scanning for direct Logger construction outside AppLog..."; \
+	! grep -rn 'Logger(subsystem:' Sources/ \
+		--include='*.swift' --exclude-dir=AppLog \
+	&& echo "  Logger construction: OK"; \
+	echo "scanning for swift-log import outside AppLog..."; \
+	! grep -rn 'import Logging' Sources/ \
+		--include='*.swift' --exclude-dir=AppLog \
+	&& echo "  swift-log direct use: OK"; \
+	echo "log-audit PASSED"
+
 install: all uninstall-helper
 	@echo "Installing to /Applications..."
 	sudo rm -rf /Applications/SMCFanHelper.app
 	sudo cp -R "$(PRODUCTS_DIR)/SMCFanHelper.app" /Applications/
 	sudo chown -R root:wheel /Applications/SMCFanHelper.app
-	@echo "Setting up log rotation..."
-	sudo mkdir -p /Library/Logs/smcfan
-	sudo cp Config/newsyslog.conf /etc/newsyslog.d/smcfan.conf
 	@echo "Registering helper..."
 	/Applications/SMCFanHelper.app/Contents/MacOS/SMCFanInstaller
 	@echo "Verifying..."
@@ -46,6 +60,8 @@ uninstall-helper:
 	-sudo rm -f /Library/LaunchDaemons/$(HELPER_BUNDLE_ID).plist
 	-sudo rm -f /Library/PrivilegedHelperTools/$(HELPER_BUNDLE_ID)
 	-sudo rm -rf /Applications/SMCFanHelper.app
+	-sudo rm -f /etc/newsyslog.d/smcfan.conf
+	-sudo rm -rf /Library/Logs/smcfan
 	@echo "Helper uninstalled."
 
 test:
