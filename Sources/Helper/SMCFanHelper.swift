@@ -17,6 +17,8 @@ private let log = AppLog.make(category: "Helper")
 class SMCFanHelper: NSObject, NSXPCListenerDelegate, SMCFanHelperProtocol, @unchecked Sendable {
     private let listener: NSXPCListener
     private var fanController: FanController?
+    private let fanVerifyLock = NSLock()
+    private var fanVerifyTasks: [UInt: Task<Void, Never>] = [:]
 
     override init() {
         let config = SMCFanConfiguration.default
@@ -221,9 +223,13 @@ class SMCFanHelper: NSObject, NSXPCListenerDelegate, SMCFanHelperProtocol, @unch
 
             let capturedFanIndex = fanIndex
             let capturedRPM = rpm
-            Task.detached { [weak self] in
+            fanVerifyLock.lock()
+            fanVerifyTasks[capturedFanIndex]?.cancel()
+            let newTask = Task { [weak self] in
                 await self?.verifyFanSpeed(fanIndex: capturedFanIndex, targetRPM: capturedRPM)
             }
+            fanVerifyTasks[capturedFanIndex] = newTask
+            fanVerifyLock.unlock()
         } catch {
             log.error("fan.rpm.set.failed fan=\(fanIndex, privacy: .public) rpm=\(Int(rpm), privacy: .public) error=\(error.localizedDescription, privacy: .public)")
             reply(false, error.localizedDescription)
@@ -240,6 +246,11 @@ class SMCFanHelper: NSObject, NSXPCListenerDelegate, SMCFanHelperProtocol, @unch
         let tolerance: Float = 0.10
 
         while Date().timeIntervalSince(startTime) < timeout {
+            if Task.isCancelled {
+                log.debug("fan.verify.cancelled fan=\(fanIndex, privacy: .public)")
+                return
+            }
+
             guard let actualRPM = readFloat(fanIndex: fanIndex, keyFormat: SMCFanKey.actual) else {
                 log.error("fan.verify.lost fan=\(fanIndex, privacy: .public)")
                 return
@@ -254,7 +265,14 @@ class SMCFanHelper: NSObject, NSXPCListenerDelegate, SMCFanHelperProtocol, @unch
                 return
             }
 
-            try? await Task.sleep(nanoseconds: UInt64(interval * 1_000_000_000))
+            do {
+                try await Task.sleep(nanoseconds: UInt64(interval * 1_000_000_000))
+            } catch {
+                if error is CancellationError {
+                    log.debug("fan.verify.cancelled fan=\(fanIndex, privacy: .public)")
+                    return
+                }
+            }
         }
 
         if let actualRPM = readFloat(fanIndex: fanIndex, keyFormat: SMCFanKey.actual) {
