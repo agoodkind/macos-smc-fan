@@ -110,13 +110,26 @@ public struct AppLogMessage: ExpressibleByStringInterpolation, ExpressibleByStri
 
 public enum AppLog {
     nonisolated(unsafe) private static var _subsystem: String = "io.goodkind.fan"
+    nonisolated(unsafe) private static var _bootstrapped: Bool = false
+    private static let bootstrapLock = NSLock()
 
     /// Call as the first statement in every executable target entry point, before any other logic.
     /// Idempotent. Safe to call more than once. Must not throw.
+    ///
+    /// `LoggingSystem.bootstrap` aborts the process on a second call, so we
+    /// gate it behind a one shot flag protected by a lock. Subsequent calls
+    /// only update the subsystem label.
     public static func bootstrap(subsystem: String) {
+        bootstrapLock.lock()
+        let firstCall = !_bootstrapped
+        _bootstrapped = true
+        bootstrapLock.unlock()
+
         _subsystem = subsystem
-        LoggingSystem.bootstrap { label in
-            OSLogHandler(subsystem: subsystem, category: label)
+        if firstCall {
+            LoggingSystem.bootstrap { label in
+                OSLogHandler(subsystem: subsystem, category: label)
+            }
         }
         let startLog = make(category: "AppLog")
         startLog.notice(

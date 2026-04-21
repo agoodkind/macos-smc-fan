@@ -10,11 +10,14 @@ import Foundation
 
 /// Configuration for SMC Fan Control
 public struct SMCFanConfiguration: Sendable {
-  /// Bundle identifier for the XPC helper service
+  /// Bundle identifier for the privileged SMC XPC helper (LaunchDaemon).
   public let helperBundleID: String
+  /// Bundle identifier for the user space smcd arbiter LaunchAgent.
+  public let smcdBundleID: String
 
-  public init(helperBundleID: String) {
+  public init(helperBundleID: String, smcdBundleID: String = "io.goodkind.smcd") {
     self.helperBundleID = helperBundleID
+    self.smcdBundleID = smcdBundleID
   }
 
   /// Default configuration, populated from build settings via Config.generated.swift
