@@ -19,6 +19,17 @@ class SMCFanHelper: NSObject, NSXPCListenerDelegate, SMCFanHelperProtocol, @unch
     private var fanController: FanController?
     private let fanVerifyLock = NSLock()
     private var fanVerifyTasks: [UInt: Task<Void, Never>] = [:]
+    private let arbitrator = FanArbitrator()
+
+    /// Resolves the `ObjectIdentifier` of the `NSXPCConnection` that is
+    /// handling the current call. Every incoming method on this class is
+    /// invoked by NSXPC while `NSXPCConnection.current()` is set to the
+    /// caller's connection, so this gives the helper a stable per client
+    /// identity for arbitration.
+    private var callerID: ObjectIdentifier? {
+        guard let conn = NSXPCConnection.current() else { return nil }
+        return ObjectIdentifier(conn)
+    }
 
     override init() {
         let config = SMCFanConfiguration.default
@@ -39,16 +50,19 @@ class SMCFanHelper: NSObject, NSXPCListenerDelegate, SMCFanHelperProtocol, @unch
         _: NSXPCListener,
         shouldAcceptNewConnection newConnection: NSXPCConnection
     ) -> Bool {
-        log.info("xpc.connection.accepted pid=\(newConnection.processIdentifier, privacy: .public) euid=\(newConnection.effectiveUserIdentifier, privacy: .public)")
+        let pid = newConnection.processIdentifier
+        let id = ObjectIdentifier(newConnection)
+        log.info("xpc.connection.accepted pid=\(pid, privacy: .public) euid=\(newConnection.effectiveUserIdentifier, privacy: .public)")
         newConnection.exportedInterface = NSXPCInterface(with: SMCFanHelperProtocol.self)
         newConnection.exportedObject = self
 
-        newConnection.invalidationHandler = {
-            log.info("xpc.connection.closed")
+        newConnection.invalidationHandler = { [weak self] in
+            log.info("xpc.connection.closed pid=\(pid, privacy: .public)")
+            self?.arbitrator.cleanupClient(id: id)
         }
 
         newConnection.interruptionHandler = {
-            log.info("xpc.connection.interrupted")
+            log.info("xpc.connection.interrupted pid=\(pid, privacy: .public)")
         }
 
         newConnection.resume()
@@ -178,17 +192,41 @@ class SMCFanHelper: NSObject, NSXPCListenerDelegate, SMCFanHelperProtocol, @unch
         }
     }
 
-    func smcSetFanRPM(_ fanIndex: UInt, rpm: Float, reply: @escaping (Bool, String?) -> Void) {
+    func smcSetFanRPM(
+        _ fanIndex: UInt,
+        rpm: Float,
+        priority: Int,
+        reply: @escaping (Bool, Bool, String?) -> Void
+    ) {
+        guard let clientID = self.callerID else {
+            log.error("smc.fan.setrpm.no_connection fan=\(fanIndex, privacy: .public)")
+            reply(false, false, "No XPC connection context")
+            return
+        }
+
+        switch arbitrator.decideClaim(fan: fanIndex, priority: priority, clientID: clientID) {
+        case .rejected(let ownerName, let ownerPriority):
+            log.debug(
+                "smc.fan.setrpm.preempted fan=\(fanIndex, privacy: .public) owner=\(ownerName, privacy: .public) owner_priority=\(ownerPriority, privacy: .public) caller_priority=\(priority, privacy: .public)"
+            )
+            reply(false, true, "preempted by \(ownerName) at priority \(ownerPriority)")
+            return
+        case .accepted(let clientName):
+            log.info(
+                "smc.fan.accepted fan=\(fanIndex, privacy: .public) rpm=\(Int(rpm), privacy: .public) client=\(clientName, privacy: .public) priority=\(priority, privacy: .public)"
+            )
+        }
+
         do {
             try ensureConnected()
         } catch {
             log.error("smc.fan.setrpm.connect.failed fan=\(fanIndex, privacy: .public) error=\(error.localizedDescription, privacy: .public)")
-            reply(false, error.localizedDescription)
+            reply(false, false, error.localizedDescription)
             return
         }
 
         guard let fanController = fanController else {
-            reply(false, "Connection not established")
+            reply(false, false, "Connection not established")
             return
         }
 
@@ -205,10 +243,10 @@ class SMCFanHelper: NSObject, NSXPCListenerDelegate, SMCFanHelperProtocol, @unch
         if !alreadyManual {
             do {
                 let strategy = try fanController.enableManualMode(fanIndex: Int(fanIndex))
-                log.notice("fan.manual.enabled fan=\(fanIndex, privacy: .public) strategy=\(strategy, privacy: .public)")
+                log.notice("fan.manual.enabled fan=\(fanIndex, privacy: .public) strategy=\(String(describing: strategy), privacy: .public)")
             } catch {
                 log.error("fan.manual.enable.failed fan=\(fanIndex, privacy: .public) error=\(error.localizedDescription, privacy: .public)")
-                reply(false, error.localizedDescription)
+                reply(false, false, error.localizedDescription)
                 return
             }
         }
@@ -219,20 +257,20 @@ class SMCFanHelper: NSObject, NSXPCListenerDelegate, SMCFanHelperProtocol, @unch
         do {
             try fanController.connection.writeKey(key, bytes: value)
             log.notice("fan.rpm.set fan=\(fanIndex, privacy: .public) rpm=\(Int(rpm), privacy: .public)")
-            reply(true, nil)
+            reply(true, false, nil)
 
             let capturedFanIndex = fanIndex
             let capturedRPM = rpm
             fanVerifyLock.lock()
             fanVerifyTasks[capturedFanIndex]?.cancel()
-            let newTask = Task { [weak self] in
+            let newTask: Task<Void, Never> = Task { [weak self] in
                 await self?.verifyFanSpeed(fanIndex: capturedFanIndex, targetRPM: capturedRPM)
             }
             fanVerifyTasks[capturedFanIndex] = newTask
             fanVerifyLock.unlock()
         } catch {
             log.error("fan.rpm.set.failed fan=\(fanIndex, privacy: .public) rpm=\(Int(rpm), privacy: .public) error=\(error.localizedDescription, privacy: .public)")
-            reply(false, error.localizedDescription)
+            reply(false, false, error.localizedDescription)
         }
     }
 
@@ -280,17 +318,44 @@ class SMCFanHelper: NSObject, NSXPCListenerDelegate, SMCFanHelperProtocol, @unch
         }
     }
 
-    func smcSetFanAuto(_ fanIndex: UInt, reply: @escaping (Bool, String?) -> Void) {
+    func smcSetFanAuto(
+        _ fanIndex: UInt,
+        priority: Int,
+        reply: @escaping (Bool, Bool, String?) -> Void
+    ) {
+        guard let clientID = self.callerID else {
+            log.error("smc.fan.setauto.no_connection fan=\(fanIndex, privacy: .public)")
+            reply(false, false, "No XPC connection context")
+            return
+        }
+
+        switch arbitrator.decideClaim(fan: fanIndex, priority: priority, clientID: clientID) {
+        case .rejected(let ownerName, let ownerPriority):
+            log.debug(
+                "smc.fan.setauto.preempted fan=\(fanIndex, privacy: .public) owner=\(ownerName, privacy: .public) owner_priority=\(ownerPriority, privacy: .public) caller_priority=\(priority, privacy: .public)"
+            )
+            reply(false, true, "preempted by \(ownerName) at priority \(ownerPriority)")
+            return
+        case .accepted(let clientName):
+            log.info(
+                "smc.fan.auto.accepted fan=\(fanIndex, privacy: .public) client=\(clientName, privacy: .public) priority=\(priority, privacy: .public)"
+            )
+            // Setting auto is an explicit relinquish: drop ownership so
+            // lower priority clients can immediately take the fan back
+            // without waiting for the TTL to lapse.
+            arbitrator.releaseOwnership(fan: fanIndex, clientID: clientID)
+        }
+
         do {
             try ensureConnected()
         } catch {
             log.error("smc.fan.setauto.connect.failed fan=\(fanIndex, privacy: .public) error=\(error.localizedDescription, privacy: .public)")
-            reply(false, error.localizedDescription)
+            reply(false, false, error.localizedDescription)
             return
         }
 
         guard let fanController = fanController else {
-            reply(false, "Connection not established")
+            reply(false, false, "Connection not established")
             return
         }
 
@@ -300,7 +365,7 @@ class SMCFanHelper: NSObject, NSXPCListenerDelegate, SMCFanHelperProtocol, @unch
             fanCount = Int(numBytes[0])
         } catch {
             log.error("smc.fan.count.failed error=\(error.localizedDescription, privacy: .public)")
-            reply(false, "Failed to read fan count")
+            reply(false, false, "Failed to read fan count")
             return
         }
 
@@ -347,7 +412,33 @@ class SMCFanHelper: NSObject, NSXPCListenerDelegate, SMCFanHelperProtocol, @unch
             log.notice("fan.auto.set fan=\(fanIndex, privacy: .public) allAuto=true noFtst=true")
         }
 
+        reply(true, false, nil)
+    }
+
+    // MARK: - Arbitration surface
+
+    func smcRegisterClient(name: String, reply: @escaping (Bool, String?) -> Void) {
+        guard let clientID = self.callerID else {
+            reply(false, "No XPC connection context")
+            return
+        }
+        arbitrator.registerClientName(name, for: clientID)
+        log.info(
+            "smc.client.registered pid=\(NSXPCConnection.current()?.processIdentifier ?? 0, privacy: .public) name=\(name, privacy: .public)"
+        )
         reply(true, nil)
+    }
+
+    func smcGetOwnership(
+        reply: @escaping ([UInt], [String], [Int], [Double]) -> Void
+    ) {
+        let rows = arbitrator.getOwnershipSnapshot()
+        reply(
+            rows.map { $0.fanIndex },
+            rows.map { $0.clientName },
+            rows.map { $0.priority },
+            rows.map { $0.ageSeconds }
+        )
     }
 
     func smcEnumerateKeys(reply: @escaping ([String]) -> Void) {

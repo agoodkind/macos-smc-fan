@@ -18,9 +18,7 @@ let package = Package(
     .library(name: "AppLog", targets: ["AppLog"]),
     .library(name: "SMCFanProtocol", targets: ["SMCFanProtocol"]),
     .library(name: "SMCFanXPCClient", targets: ["SMCFanXPCClient"]),
-    .library(name: "SMCDClient", targets: ["SMCDClient"]),
     .executable(name: "smcfan", targets: ["smcfan"]),
-    .executable(name: "smcd", targets: ["smcd"]),
   ],
   dependencies: [
     .package(url: "https://github.com/apple/swift-log.git", from: "1.6.0"),
@@ -77,17 +75,6 @@ let package = Package(
         .enableUpcomingFeature("StrictConcurrency"),
       ]
     ),
-    .target(
-      name: "SMCDClient",
-      dependencies: [
-        "AppLog",
-        "SMCFanProtocol",
-      ],
-      path: "Sources/SMCDClient",
-      swiftSettings: [
-        .enableUpcomingFeature("StrictConcurrency"),
-      ]
-    ),
     .executableTarget(
       name: "smcfan",
       dependencies: [
@@ -95,34 +82,8 @@ let package = Package(
         "SMCFanKit",
         "SMCFanProtocol",
         "SMCFanXPCClient",
-        "SMCDClient",
       ],
       path: "Sources/CLI",
-      swiftSettings: [
-        .enableUpcomingFeature("StrictConcurrency"),
-      ]
-    ),
-    .target(
-      name: "SMCDCore",
-      dependencies: [
-        "AppLog",
-        "SMCFanProtocol",
-        "SMCFanXPCClient",
-      ],
-      path: "Sources/SMCDCore",
-      swiftSettings: [
-        .enableUpcomingFeature("StrictConcurrency"),
-      ]
-    ),
-    .executableTarget(
-      name: "smcd",
-      dependencies: [
-        "AppLog",
-        "SMCFanProtocol",
-        "SMCFanXPCClient",
-        "SMCDCore",
-      ],
-      path: "Sources/SMCD",
       swiftSettings: [
         .enableUpcomingFeature("StrictConcurrency"),
       ]
@@ -171,17 +132,6 @@ let package = Package(
         "SMCFanProtocol",
       ],
       path: "Tests/SMCFanXPCClientTests",
-      swiftSettings: [
-        .enableUpcomingFeature("StrictConcurrency"),
-      ]
-    ),
-    .testTarget(
-      name: "SMCDCoreTests",
-      dependencies: [
-        "SMCDCore",
-        "SMCFanXPCClient",
-      ],
-      path: "Tests/SMCDCoreTests",
       swiftSettings: [
         .enableUpcomingFeature("StrictConcurrency"),
       ]

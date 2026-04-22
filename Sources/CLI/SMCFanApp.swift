@@ -12,12 +12,11 @@ import SMCFanProtocol
 
 private let log = AppLog.make(category: "XPCClient")
 
-/// Parsed CLI invocation: a command and its positional arguments, plus
-/// backend selection flags.
+/// Parsed CLI invocation: a command, its positional arguments, and the
+/// write priority (default high so ad hoc CLI writes preempt daemons).
 struct CLIInvocation {
   var command: String?
   var positional: [String] = []
-  var direct: Bool = false
   var priority: Int = 100
 }
 
@@ -27,10 +26,6 @@ func parseCLI(_ argv: [String]) -> CLIInvocation {
   while i < argv.count {
     let arg = argv[i]
     switch arg {
-    case "--direct":
-      inv.direct = true
-    case "--via-smcd":
-      inv.direct = false
     case "--priority":
       if i + 1 < argv.count, let value = Int(argv[i + 1]) {
         inv.priority = value
@@ -65,7 +60,7 @@ struct SMCFan {
     do {
       switch command {
       case "list":
-        try await Commands.list(direct: inv.direct, priority: inv.priority)
+        try await Commands.list(priority: inv.priority)
 
       case "set":
         guard inv.positional.count >= 2,
@@ -75,28 +70,31 @@ struct SMCFan {
           CLIOut.err("Usage: smcfan set <fan> <rpm>")
           exit(1)
         }
-        try await Commands.set(fan: fan, rpm: rpm, direct: inv.direct, priority: inv.priority)
+        try await Commands.set(fan: fan, rpm: rpm, priority: inv.priority)
 
       case "auto":
         guard inv.positional.count >= 1, let fan = Int(inv.positional[0]) else {
           CLIOut.err("Usage: smcfan auto <fan>")
           exit(1)
         }
-        try await Commands.auto(fan: fan, direct: inv.direct, priority: inv.priority)
+        try await Commands.auto(fan: fan, priority: inv.priority)
 
       case "read":
         guard inv.positional.count >= 1 else {
           CLIOut.err("Usage: smcfan read <key>")
           exit(1)
         }
-        try await Commands.read(key: inv.positional[0], direct: inv.direct, priority: inv.priority)
+        try await Commands.read(key: inv.positional[0], priority: inv.priority)
 
       case "keys":
         let filter = inv.positional.first
-        try await Commands.keys(filter: filter, direct: inv.direct, priority: inv.priority)
+        try await Commands.keys(filter: filter, priority: inv.priority)
 
       case "sensors":
-        try await Commands.sensors(direct: inv.direct, priority: inv.priority)
+        try await Commands.sensors(priority: inv.priority)
+
+      case "owners":
+        try await Commands.owners(priority: inv.priority)
 
       case "-h", "--help", "help":
         Commands.printUsage()

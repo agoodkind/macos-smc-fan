@@ -39,6 +39,8 @@ targets:
     sources:
       - path: Sources/Installer
       - path: Sources/Common
+        excludes:
+          - "Config.generated.swift"
       - path: "${DERIVED_FILE_DIR}/Generated/Config.generated.swift"
         optional: true
         buildPhase: sources
@@ -49,7 +51,7 @@ targets:
       - package: SMCFan
         product: SMCFanKit
       - package: SMCFan
-        product: SMCFanLogging
+        product: AppLog
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: $(APP_BUNDLE_ID)
@@ -86,6 +88,8 @@ targets:
     sources:
       - path: Sources/Helper
       - path: Sources/Common
+        excludes:
+          - "Config.generated.swift"
       - path: "${DERIVED_FILE_DIR}/Generated/Config.generated.swift"
         optional: true
         buildPhase: sources
@@ -94,7 +98,7 @@ targets:
       - package: SMCFan
         product: SMCFanKit
       - package: SMCFan
-        product: SMCFanLogging
+        product: AppLog
     settings:
       base:
         PRODUCT_NAME: $(HELPER_BUNDLE_ID)
@@ -122,6 +126,8 @@ targets:
     sources:
       - path: Sources/CLI
       - path: Sources/Common
+        excludes:
+          - "Config.generated.swift"
       - path: "${DERIVED_FILE_DIR}/Generated/Config.generated.swift"
         optional: true
         buildPhase: sources
@@ -130,7 +136,7 @@ targets:
       - package: SMCFan
         product: SMCFanKit
       - package: SMCFan
-        product: SMCFanLogging
+        product: AppLog
     settings:
       base:
         PRODUCT_NAME: smcfan

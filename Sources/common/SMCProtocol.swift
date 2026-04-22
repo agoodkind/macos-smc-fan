@@ -33,8 +33,27 @@ public struct FanInfo: Sendable {
   }
 }
 
-/// XPC protocol for SMC fan control operations
-/// Note: Return values use separate parameters instead of structs for XPC compatibility
+/// Priority constants shared by every client that writes fans through
+/// `SMCFanXPCClient`. The helper arbitrates per fan by these values.
+/// Higher preempts lower while the incumbent is active. Constants are
+/// advisory; any Int is valid.
+public enum SMCFanPriority {
+  /// Default passive curve. fancurveagent normal operation.
+  public static let curveNormal = 10
+  /// Cooldown after LLM unload. lmd during hold and ramp down.
+  public static let llmCooling = 20
+  /// Active LLM inference. lmd's FanCoordinator while inference runs.
+  public static let llmActive = 50
+  /// User initiated boost from the GUI.
+  public static let userBoost = 50
+}
+
+/// XPC protocol for SMC fan control operations.
+///
+/// Reply signatures use primitive types only so the whole protocol crosses
+/// the NSXPCConnection boundary without a custom coder. Writes return a
+/// `preempted` flag in addition to `success` so callers can distinguish a
+/// priority rejection from an SMC failure.
 @objc public protocol SMCFanHelperProtocol {
   /// Open connection to SMC
   func smcOpen(reply: @escaping @Sendable (Bool, String?) -> Void)
@@ -76,22 +95,41 @@ public struct FanInfo: Sendable {
       ) -> Void
   )
 
-  /// Set fan speed to a specific RPM
+  /// Request a fan RPM target. Rejected with `preempted=true` when a
+  /// higher priority owner currently holds this fan. Ownership lapses
+  /// after the helper's TTL with no further writes.
   func smcSetFanRPM(
     _ fanIndex: UInt,
     rpm: Float,
-    reply: @escaping @Sendable (Bool, String?) -> Void
+    priority: Int,
+    reply: @escaping @Sendable (Bool, Bool, String?) -> Void
   )
 
-  /// Return fan to automatic/minimum speed control
+  /// Hand the fan back to automatic/minimum speed control. Same
+  /// arbitration rules as `smcSetFanRPM`.
   func smcSetFanAuto(
     _ fanIndex: UInt,
-    reply: @escaping @Sendable (Bool, String?) -> Void
+    priority: Int,
+    reply: @escaping @Sendable (Bool, Bool, String?) -> Void
   )
 
   /// Enumerate all SMC keys
   func smcEnumerateKeys(
     reply: @escaping @Sendable ([String]) -> Void
+  )
+
+  /// Register a human readable name for this connection. Optional. When
+  /// set, ownership diagnostics and preemption messages refer to this
+  /// name instead of `<unregistered>`.
+  func smcRegisterClient(
+    name: String,
+    reply: @escaping @Sendable (Bool, String?) -> Void
+  )
+
+  /// Snapshot of current arbitration state. Returns four parallel
+  /// arrays, one entry per fan that currently has an owner.
+  func smcGetOwnership(
+    reply: @escaping @Sendable ([UInt], [String], [Int], [Double]) -> Void
   )
 }
 
