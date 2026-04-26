@@ -481,3 +481,25 @@ The tested M5 machine appears to accept direct writes to the lowercase mode key 
 - **Implementation churn**: The shift may simply reflect SMC firmware churn between generations rather than a deliberate redesign.
 
 None of these have been verified, and behavior on other M5 variants has not been tested.
+
+## References
+
+[^1]: [Respond to Thermal State Changes](https://developer.apple.com/library/archive/documentation/Performance/Conceptual/power_efficiency_guidelines_osx/RespondToThermalStateChanges.html) - `NSProcessInfo.thermalState` API
+[^2]: [IOKit Power Management Release Notes](https://developer.apple.com/library/archive/releasenotes/Darwin/RN-IOKitPowerManagment/index.html) - IOKit power management and notification APIs
+[^3]: [Apple Platform Security - Boot Modes](https://support.apple.com/guide/security/sec10869885b) - Firmware security architecture
+[^4]: [SMJobBless](https://developer.apple.com/documentation/servicemanagement/smjobbless(_:_:_:_:)) - Privileged helper installation
+[^5]: [Apple SMC Data Types](https://cbosoft.github.io/blog/2020/07/17/apple-smc/) - `fpe2` format encoding
+[^6]: [Asahi Linux SMC Documentation](https://asahilinux.org/docs/hw/soc/smc/) - Apple Silicon SMC key formats
+[^7]: [SMC Sensor Keys Reference](https://www.marukka.ch/mac/mac-smc-sensor-keys) - Comprehensive SMC key catalog
+[^8]: [smcFanControl Repository](https://github.com/hholtmann/smcFanControl) - Open-source fan control tool
+[^9]: [Linux Kernel applesmc Driver](https://github.com/torvalds/linux/blob/master/drivers/hwmon/applesmc.c) - Intel Mac SMC driver; authoritative source for legacy SMC key schema
+[^10]: [Thermals and macOS - Dave MacLachlan](https://dmaclach.medium.com/thermals-and-macos-c0db81062889) - Thermal monitoring APIs and `thermald`/`thermalmonitord` behavior on macOS
+[^11]: Jonathan Levin, ["Mac OS X and iOS Internals, Volume I: User Mode"](http://www.newosxbook.com) (ISBN: 099105556X) - System daemons and thermal management architecture
+[^12]: [Keep your Mac laptop within acceptable operating temperatures](https://support.apple.com/en-us/102336) - Mac thermal management and fan behavior
+[^13]: [IOKit Fundamentals](https://developer.apple.com/library/archive/documentation/DeviceDrivers/Conceptual/IOKitFundamentals/Introduction/Introduction.html) - Apple's device driver and hardware access framework
+[^14]: [Linux Kernel macsmc-hwmon Driver](https://github.com/torvalds/linux/blob/master/drivers/hwmon/macsmc-hwmon.c) - Apple Silicon SMC hwmon driver (Asahi Linux); provides fan control on Linux via hwmon interfaces
+[^15]: [Asahi Linux Progress Report: Linux 6.18](https://asahilinux.org/2025/12/progress-report-6-18/) - Documents upstreaming of SMC hwmon driver to mainline Linux
+[^16]: [VirtualSMC SDK `AppleSmc.h`](https://github.com/acidanthera/VirtualSMC/blob/master/VirtualSMCSDK/AppleSmc.h) - SMC result codes, commands, and protocol constants derived from reverse engineering Apple's SMC
+[^17]: [SMCKit (beltex)](https://github.com/beltex/SMCKit) - Swift library for reading SMC sensor data; documents read operations without root, writes require root
+[^18]: [smc-fuzzer (acidanthera)](https://github.com/acidanthera/VirtualSMC/blob/master/Tools/smc-fuzzer/README.md) - SMC testing tool; demonstrates read/write privilege asymmetry ("no value should be writable as a non-privileged user")
+[^19]: [Stats (exelban)](https://github.com/exelban/stats) - macOS system monitor; reads SMC sensor data from unprivileged app process, privileged helper used exclusively for fan control writes
