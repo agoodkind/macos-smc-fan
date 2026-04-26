@@ -504,6 +504,7 @@ The tested M5 machine appears to accept direct writes to the lowercase mode key 
 - **Firmware simplification**: Apple may have moved more of the thermal policy into firmware controllers, making the userspace `Ftst` gate unnecessary on this generation.
 - **Internal tooling needs**: This may reflect changes in Apple's own diagnostic or service workflows rather than an intentional change in user-facing policy.
 - **Implementation churn**: The shift may simply reflect SMC firmware churn between generations rather than a deliberate redesign.
+- **AI/LLM cooling needs**: As local AI compute demands grow, Apple may be opening a path for easier userspace thermal management to support sustained inference workloads.
 
 None of these have been verified, and behavior on other M5 variants has not been tested.
 
