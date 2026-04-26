@@ -2,7 +2,7 @@
 
 This document holds the deeper research narrative behind the project. The slim `README.md` covers project structure, quick start, and links here.
 
-Currently observed integration test results live in [`testing.md`](testing.md). Hardware-specific expectations consumed by integration tests live as plists in [`../Tests/IntegrationTests/Fixtures`](../Tests/IntegrationTests/Fixtures), with the schema defined by [`../Tests/IntegrationTests/HardwareExpectations.swift`](../Tests/IntegrationTests/HardwareExpectations.swift).
+Currently observed integration test results live in `[testing.md](testing.md)`. Hardware-specific expectations consumed by integration tests live as plists in `[../Tests/IntegrationTests/Fixtures](../Tests/IntegrationTests/Fixtures)`, with the schema defined by `[../Tests/IntegrationTests/HardwareExpectations.swift](../Tests/IntegrationTests/HardwareExpectations.swift)`.
 
 ## Methodology
 
@@ -39,9 +39,9 @@ This hybrid approach (traditional binary analysis tools combined with LLM analys
 
 - **SMC (System Management Controller)**: A microcontroller (Legacy/T2) or integrated firmware component (Apple Silicon) that manages low-level hardware: thermal sensors, fan speeds, power states, and other system functions [^7]. On legacy hardware, it's discrete; on Apple Silicon, it's part of the SoC.
 - **SoC (System-on-Chip)**: Apple Silicon (M1-M5+) integrates CPU, GPU, Neural Engine, memory controllers, and management components into a single chip, unlike earlier Macs which had separate components. See Apple's documentation on boot security for more on SoC architecture [^3].
-- **`RTKit`**: Apple's embedded firmware backend that manages the integrated SMC on Apple Silicon [^6], replacing the older ACPI-based interface used previously.
+- `**RTKit`**: Apple's embedded firmware backend that manages the integrated SMC on Apple Silicon [^6], replacing the older ACPI-based interface used previously.
 - **Daemon**: A background system process (e.g., `thermalmonitord`) that runs with elevated privileges and coordinates system behavior. It monitors thermal pressure [^1] and publishes state changes [^2].
-- **`IOKit`**: Apple's macOS kernel framework for communicating with hardware devices from userspace. It provides a structured way to discover, access, and control device drivers without requiring kernel code. In this project, `IOKit` is used to open a connection to the `AppleSMC` driver and issue read/write commands to SMC keys [^13].
+- `**IOKit`**: Apple's macOS kernel framework for communicating with hardware devices from userspace. It provides a structured way to discover, access, and control device drivers without requiring kernel code. In this project, `IOKit` is used to open a connection to the `AppleSMC` driver and issue read/write commands to SMC keys [^13].
 
 ### Evolution of macOS SMC-based Fan Control
 
@@ -75,10 +75,10 @@ Testing on the examined M4 machine suggests that fan mode writes are blocked by 
 
 #### M5 Generation
 
-Testing on M5 (Mac17,7, macOS 26.4.1) revealed two changes from the tested M4 machine:
+Testing on M5 `Mac17,7`, macOS 26.4.1) revealed two changes from the tested M4 machine:
 
-- **Mode key casing changed**: The fan mode key is `F%dmd` (lowercase `m`) rather than `F%dMd` (uppercase `M`). The `readKeyInfo` command returns `SmcNotFound` (0x84) for the uppercase variant. Implementations must probe both casings at runtime.
-- **`Ftst` key absent**: On the tested M5 machine, the `Ftst` (Force Test) diagnostic key does not exist. `readKeyInfo` returns `SmcNotFound` (0x84). Direct writes to `F%dmd=1` succeed immediately without any unlock sequence.
+- **Mode key casing changed**: The fan mode key is `F%dmd` (lowercase `m`) rather than `F%dMd` (uppercase `M`). The `readKeyInfo` command returns `SmcNotFound` `0x84`) for the uppercase variant. Implementations must probe both casings at runtime.
+- `**Ftst` key absent**: On the tested M5 machine, the `Ftst` (Force Test) diagnostic key does not exist. `readKeyInfo` returns `SmcNotFound` `0x84`). Direct writes to `F%dmd=1` succeed immediately without any unlock sequence.
 - **No unlock sequence needed**: Fan mode can be set directly by writing `F%dmd=1`, then setting the target RPM via `F%dTg`. No `Ftst` toggle or retry loop is required.
 
 ## Research Findings
@@ -89,15 +89,17 @@ Prior research [^7][^8][^9] found the following keys, which were verified for Ap
 
 > **Key format**: `%d` is a placeholder for the fan index (0-based). For example, `F0Ac` is fan 0's actual RPM, `F1Tg` is fan 1's target RPM.
 
-| Key                | Type    | Description                                                                                                                         |
-| ------------------ | ------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| `FNum`             | `uint8` | Number of fans                                                                                                                      |
-| `F%dAc`            | `float` | Actual RPM (read-only)                                                                                                              |
-| `F%dTg`            | `float` | Target RPM (0 to any value; not bounded by min/max)                                                                                 |
-| `F%dMn`            | `float` | Recommended minimum RPM (guideline, not enforced)                                                                                   |
-| `F%dMx`            | `float` | Recommended maximum RPM (guideline, not enforced)                                                                                   |
-| `F%dMd` or `F%dmd` | `uint8` | Mode (0=auto, 1=manual, 3=system). Key casing varies: For example, uppercase on M4 Max, lowercase on M5 Max. Probe both at runtime. |
-| `Ftst`             | `uint8` | Force/test flag. Absent on M5 Max.                                                                                                  |
+
+| Key                | Type    | Description                                                                                                                              |
+| ------------------ | ------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `FNum`             | `uint8` | Number of fans                                                                                                                           |
+| `F%dAc`            | `float` | Actual RPM (read-only)                                                                                                                   |
+| `F%dTg`            | `float` | Target RPM (0 to any value; not bounded by min/max)                                                                                      |
+| `F%dMn`            | `float` | Recommended minimum RPM (guideline, not enforced)                                                                                        |
+| `F%dMx`            | `float` | Recommended maximum RPM (guideline, not enforced)                                                                                        |
+| `F%dMd` or `F%dmd` | `uint8` | Mode `0=auto`, `1=manual`, `3=system`). Key casing varies: For example, uppercase on M4 Max, lowercase on M5 Max. Probe both at runtime. |
+| `Ftst`             | `uint8` | Force/test flag. Absent on M5 Max.                                                                                                       |
+
 
 **Note on Min/Max Values**: The `F%dMn` and `F%dMx` keys report recommended operating ranges, not hard limits. Testing confirms:
 
@@ -116,6 +118,7 @@ Cross-platform code must detect and handle both formats [^5][^6]. See [Architect
 
 The values for the mode key (`F%dMd` or `F%dmd`, depending on hardware; see [M5 Generation](#m5-generation)) were identified by monitoring system state transitions during experimental testing and analyzing the decompiled `thermalmonitord` logic. Subsequent references to "the mode key" in this document apply to whichever casing variant is present on the target hardware. The mode names (Auto, Manual, System) are informal labels, not official Apple terminology.
 
+
 | Mode | Name   | Description                                                                 |
 | ---- | ------ | --------------------------------------------------------------------------- |
 | `0`  | Auto   | System manages fans, target defaults to minimum RPM                         |
@@ -123,16 +126,17 @@ The values for the mode key (`F%dMd` or `F%dmd`, depending on hardware; see [M5 
 | `2`  | ?      | Legacy (T2): Forced manual mode; not observed on Apple Silicon              |
 | `3`  | System | Active mitigation state (`AppleCLPC`); firmware rejects manual mode changes |
 
+
 Mode 3 is the default on Apple Silicon when `thermalmonitord` is managing system thermals. The unlock sequence transitions the system from mode 3 → 0, then allows setting mode 1.
 
 ### Architecture & Research Insights
 
 Through disassembly of `thermalmonitord` and `AppleSMC.kext`, several key architectural details were identified:
 
-1. **`RTKit` Abstraction**: On Apple Silicon, SMC keys like the mode key and `Ftst` are not hardcoded in userspace binaries. They are managed by the `RTKit` firmware embedded within the SoC [^6]. The `AppleSMC` kernel driver acts as a transparent bridge to this firmware.
+1. `**RTKit` Abstraction**: On Apple Silicon, SMC keys like the mode key and `Ftst` are not hardcoded in userspace binaries. They are managed by the `RTKit` firmware embedded within the SoC [^6]. The `AppleSMC` kernel driver acts as a transparent bridge to this firmware.
 2. **Property-Based Control**: `thermalmonitord` does not write to SMC keys directly. Instead, it uses high-level Objective-C properties (via `IORegistryEntrySetCFProperty`) to communicate with hardware controllers like `AppleCLPC` (Closed Loop Power Controller) and `ApplePMGR` (Power Manager). It sets "ceilings" and "mitigations" rather than raw RPMs.
 3. **Mode 3 is a State, not a Command**: "System Mode" (`mode 3`) is not a command sent by the daemon. Rather, it is the state *reported* by the `RTKit` firmware when hardware controllers like `AppleCLPC` are in an active mitigation state. This explains why `thermalmonitord` does not need to "set" mode 3; its very operation causes the hardware to enter and report that state.
-4. **`Ftst` Unlock Mechanism**: Decompiled code analysis of `thermalmonitord` reveals the `Ftst=1` write inhibits the `LifetimeServoController` component from asserting thermal targets. Specifically, when `Ftst` is set, the controller's reclaim logic is suppressed, preventing it from sending die temperature targets to `AppleCLPC`. This allows manual fan mode to persist. The daemon's polling loop continues checking sensors but does not override fan settings while in this diagnostic state.
+4. `**Ftst` Unlock Mechanism**: Decompiled code analysis of `thermalmonitord` reveals the `Ftst=1` write inhibits the `LifetimeServoController` component from asserting thermal targets. Specifically, when `Ftst` is set, the controller's reclaim logic is suppressed, preventing it from sending die temperature targets to `AppleCLPC`. This allows manual fan mode to persist. The daemon's polling loop continues checking sensors but does not override fan settings while in this diagnostic state.
 5. **Model Detection**: The decompiled code includes board ID to configuration mapping that determines which thermal controller to use. M3/M4 models are identified by the `updateCPUFastDieTargetPMP` configuration flag, which enables `AppleDieTempController` instead of `AppleCLPC`. This allows implementations to programmatically detect hardware generation and adjust behavior accordingly.
 6. **Mode 2 (Legacy)**: While value `2` appears in older SMC tools (like `smcFanControl` [^8]) or community databases [^7] as a "manual override" or "forced" mode for T2-equipped Macs, no references to it were found in the Apple Silicon `thermalmonitord` or driver logic.
 7. **Read/Write Permission Model**: The permission asymmetry between reads and writes does not appear to originate at the `IOKit` connection level. Both operations use identical `IOServiceOpen` parameters (connection type `0`) and the same `IOConnectCallStructMethod` selector (`2`). The VirtualSMC SDK [^16] documents a per-key attribute byte that the SMC firmware evaluates independently for each operation. The Asahi Linux SMC documentation [^6] similarly describes per-key flags bytes across the ~1,400 SMC keys on Apple Silicon. This per-key model is consistent with our observation that any unprivileged process can read sensor data (temperatures, fan speeds, voltages), while writes to fan control keys require root. For implementations building on these libraries, this means `SMCKit` can be used directly by any application for read-only monitoring without a privileged helper. The helper daemon is only required for write operations performed through `SMCFanKit`.
@@ -249,13 +253,16 @@ Observed reclaim behavior and persistence requirements are summarized in [Daemon
 
 **IOKit Errors:**
 
+
 | Code         | Name                     | Description                                                       |
 | ------------ | ------------------------ | ----------------------------------------------------------------- |
 | `0xe00002c2` | `kIOReturnNotPrivileged` | Operation requires root privileges (use privileged helper daemon) |
 
+
 **SMC Errors (returned in `result` field):**
 
 These codes are from VirtualSMC SDK[^16], the authoritative source for Apple SMC protocol documentation.
+
 
 | Code   | Name                  | Description                                                                                                                                                                                                 |
 | ------ | --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -272,9 +279,10 @@ These codes are from VirtualSMC SDK[^16], the authoritative source for Apple SMC
 | `0x88` | `SmcFramingError`     | Protocol framing error                                                                                                                                                                                      |
 | `0x89` | `SmcBadArgumentError` | Bad argument to SMC function                                                                                                                                                                                |
 
+
 Note: `0x87` errors on `F0Tg` writes sometimes succeed. The value is applied despite the error response.
 
-### Data Structure
+### C Struct Layout
 
 ```c
 typedef struct {
@@ -294,7 +302,9 @@ typedef struct {
 
 **Critical:** Field alignment must be exact. `keyInfo.dataSize` at offset 28, `data8` at offset 42.
 
-> **Swift Struct Compatibility Note**: Despite initial concerns about Swift struct padding differing from C, testing with `MemoryLayout.offset` confirms that Swift correctly places all fields at the expected kernel ABI offsets. The nested `keyInfo_t` struct has `size=9` but `stride=12`, and Swift's layout engine properly accounts for this when computing parent struct offsets. This means pure Swift implementations can work without C bridging code (see `Sources/SMCKit/SMCTypes.swift` and `Sources/SMCKit/SMCConnection.swift` for the implementation). The key is using `MemoryLayout<SMCKeyData_t>.stride` (not `.size`) when calling `IOConnectCallStructMethod`.
+### Swift Layout
+
+Despite initial concerns about Swift struct padding differing from C, testing with `MemoryLayout.offset` confirms that Swift correctly places all fields at the expected kernel ABI offsets. The nested `keyInfo_t` struct has `size=9` but `stride=12`, and Swift's layout engine properly accounts for this when computing parent struct offsets. This means pure Swift implementations can work without C bridging code (see `Sources/SMCKit/SMCTypes.swift` and `Sources/SMCKit/SMCConnection.swift` for the implementation). The key is using `MemoryLayout<SMCKeyData_t>.stride` (not `.size`) when calling `IOConnectCallStructMethod`.
 
 ### Debugging
 
@@ -346,7 +356,7 @@ This approach is intended to be self-discovering. In testing, M1 and M5 Max used
 
 ### Test Results
 
-Currently observed test results live in [`docs/testing.md`](docs/testing.md). Hardware-specific expectations consumed by integration tests live as plists in [`Tests/IntegrationTests/Fixtures`](Tests/IntegrationTests/Fixtures).
+Currently observed test results live in `[docs/testing.md](docs/testing.md)`. Hardware-specific expectations consumed by integration tests live as plists in `[Tests/IntegrationTests/Fixtures](Tests/IntegrationTests/Fixtures)`.
 
 ### System Mode and 0 RPM
 
@@ -373,17 +383,20 @@ The following claims require additional verification, and the methodologies used
 
 ### Hardware Compatibility
 
-| Hardware | Status | Notes |
-| -------- | ------ | ----- |
-| M1 | **Tested** | Direct writes to `F%dMd=1` are confirmed to work on the tested M1 machine without the `Ftst` unlock. |
-| M2 | **Untested** | M2 remains an open point in this research. |
-| M3 | **Untested** | M3 remains an open point in this research. |
-| M4 | **Tested** | The tested M4 machine uses the uppercase `F%dMd` form, exposes `Ftst`, and appears to require the unlock path when direct mode writes are blocked. |
-| M5 (Mac17,7) | **Tested** | The tested M5 machine uses the lowercase `F%dmd` form, does not expose `Ftst`, and appears to accept direct manual-mode writes. Below-min targets appear to clamp to the reported minimum, and auto-mode target behavior needs clearer retesting. |
-| T2 (Intel) | **Untested** | Mode 2 behavior is referenced in prior work but not verified here. |
-| Mac Studio / Mac Pro | **Untested** | Multi-fan desktop behavior remains unverified. |
+
+| Hardware             | Status       | Notes                                                                                                                                                                                                                                             |
+| -------------------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| M1                   | **Tested**   | Direct writes to `F%dMd=1` are confirmed to work on the tested M1 machine without the `Ftst` unlock.                                                                                                                                              |
+| M2                   | **Untested** | M2 remains an open point in this research.                                                                                                                                                                                                        |
+| M3                   | **Untested** | M3 remains an open point in this research.                                                                                                                                                                                                        |
+| M4                   | **Tested**   | The tested M4 machine uses the uppercase `F%dMd` form, exposes `Ftst`, and appears to require the unlock path when direct mode writes are blocked.                                                                                                |
+| M5 (Mac17,7)         | **Tested**   | The tested M5 machine uses the lowercase `F%dmd` form, does not expose `Ftst`, and appears to accept direct manual-mode writes. Below-min targets appear to clamp to the reported minimum, and auto-mode target behavior needs clearer retesting. |
+| T2 (Intel)           | **Untested** | Mode 2 behavior is referenced in prior work but not verified here.                                                                                                                                                                                |
+| Mac Studio / Mac Pro | **Untested** | Multi-fan desktop behavior remains unverified.                                                                                                                                                                                                    |
+
 
 ### Inferred Behaviors
+
 
 | Item                               | Status           | Evidence                                                                                                                                                                                                                                                                                               |
 | ---------------------------------- | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -395,9 +408,11 @@ The following claims require additional verification, and the methodologies used
 | Mode 0 "minimum RPM" meaning       | **Not verified** | Mode 0 is described as "target defaults to minimum RPM" in the mode table, but it is unconfirmed whether that minimum corresponds to the `F%dMn` key value or some other firmware-determined floor.                                                                                                    |
 | Mode 0 thermal ramping             | **Not verified** | Unknown whether firmware-level mode 0 performs its own thermal ramping independent of `thermalmonitord`, or if fans simply hold at the default minimum. Only mode 3 has been observed to allow 0 RPM idle.                                                                                             |
 
+
 ### Alternative Control Mechanisms
 
 Decompiled code analysis has identified potential alternative approaches that may provide cleaner or more persistent control than the `Ftst` unlock mechanism:
+
 
 | Approach                     | Status       | Notes                                                                                                                                                                                                                              |
 | ---------------------------- | ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -405,9 +420,11 @@ Decompiled code analysis has identified potential alternative approaches that ma
 | Direct IOKit property writes | **Untested** | Properties like `LifetimeServoDieTemperatureTargetPropertyKey` (M1/M2) and `LifetimeServoFastDieTemperatureTarget` (M3/M4) written to `AppleCLPC` or `AppleDieTempController`. May communicate directly with hardware controllers. |
 | Alternative diagnostic keys  | **Partial**  | `TG0B`, `TG0V`, `zETM`, `zEAR`, `TGraph` identified but not tested for fan control. `Ftst` appears to be the primary diagnostic override.                                                                                          |
 
+
 ### Future Research Directions
 
 The same research methodologies could reveal other SMC-controllable parameters:
+
 
 | Area               | Potential                                          |
 | ------------------ | -------------------------------------------------- |
@@ -417,7 +434,9 @@ The same research methodologies could reveal other SMC-controllable parameters:
 | Battery Management | Charge limits, health parameters                   |
 | System Telemetry   | Undocumented sensor data                           |
 
+
 ### Edge Cases
+
 
 | Item                                        | Status       | Notes                                                                                            |
 | ------------------------------------------- | ------------ | ------------------------------------------------------------------------------------------------ |
@@ -425,6 +444,7 @@ The same research methodologies could reveal other SMC-controllable parameters:
 | Boot arguments (`smc-debug`, `smc-logsize`) | **Untested** | Identified in decompiled code but not tested for output                                          |
 | Helper crash with `Ftst=1` active           | **Untested** | Potential thermal management gap if helper crashes without resetting `Ftst`                      |
 | Fan coupling on M3/M4                       | **Partial**  | Community reports suggest synchronized fan behavior on some models. Not consistently reproduced. |
+
 
 ## Takeaways
 
@@ -499,7 +519,7 @@ None of these have been verified, and behavior on other M5 variants has not been
 [^13]: [IOKit Fundamentals](https://developer.apple.com/library/archive/documentation/DeviceDrivers/Conceptual/IOKitFundamentals/Introduction/Introduction.html) - Apple's device driver and hardware access framework
 [^14]: [Linux Kernel macsmc-hwmon Driver](https://github.com/torvalds/linux/blob/master/drivers/hwmon/macsmc-hwmon.c) - Apple Silicon SMC hwmon driver (Asahi Linux); provides fan control on Linux via hwmon interfaces
 [^15]: [Asahi Linux Progress Report: Linux 6.18](https://asahilinux.org/2025/12/progress-report-6-18/) - Documents upstreaming of SMC hwmon driver to mainline Linux
-[^16]: [VirtualSMC SDK `AppleSmc.h`](https://github.com/acidanthera/VirtualSMC/blob/master/VirtualSMCSDK/AppleSmc.h) - SMC result codes, commands, and protocol constants derived from reverse engineering Apple's SMC
+[^16]: [VirtualSMC SDK `AppleSmc.h](https://github.com/acidanthera/VirtualSMC/blob/master/VirtualSMCSDK/AppleSmc.h)` - SMC result codes, commands, and protocol constants derived from reverse engineering Apple's SMC
 [^17]: [SMCKit (beltex)](https://github.com/beltex/SMCKit) - Swift library for reading SMC sensor data; documents read operations without root, writes require root
 [^18]: [smc-fuzzer (acidanthera)](https://github.com/acidanthera/VirtualSMC/blob/master/Tools/smc-fuzzer/README.md) - SMC testing tool; demonstrates read/write privilege asymmetry ("no value should be writable as a non-privileged user")
 [^19]: [Stats (exelban)](https://github.com/exelban/stats) - macOS system monitor; reads SMC sensor data from unprivileged app process, privileged helper used exclusively for fan control writes
