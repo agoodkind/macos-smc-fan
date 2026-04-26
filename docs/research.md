@@ -1,6 +1,6 @@
 # SMC fan control research
 
-This document holds the deeper research narrative behind the project. The slim `README.md` covers project structure, quick start, and links here.
+This document holds the deeper research narrative behind the project. The slim [`README.md`](../README.md) covers project structure, quick start, and links here.
 
 Currently observed integration test results live in `[testing.md](testing.md)`. Hardware-specific expectations consumed by integration tests live as plists in `[../Tests/IntegrationTests/Fixtures](../Tests/IntegrationTests/Fixtures)`, with the schema defined by `[../Tests/IntegrationTests/HardwareExpectations.swift](../Tests/IntegrationTests/HardwareExpectations.swift)`.
 
@@ -187,7 +187,7 @@ The project is implemented entirely in **Swift**. Low-level SMC communication (`
 
 #### Fan Control Unlock Logic
 
-The unlock sequence is implemented in `FanController.unlockFanControlSync()` (see `Sources/SMCFanKit/FanControl.swift`). It uses a 100ms retry interval and a 10 second timeout to wait for `thermalmonitord` to yield control after the `Ftst=1` toggle.
+The unlock sequence is implemented in `FanController.unlockFanControlSync()` (see [`Sources/SMCFanKit/FanControl.swift`](../Sources/SMCFanKit/FanControl.swift)). It uses a 100ms retry interval and a 10 second timeout to wait for `thermalmonitord` to yield control after the `Ftst=1` toggle.
 
 **Mechanism Details**: Analysis of the decompiled `thermalmonitord` binary reveals that `Ftst=1` inhibits the daemon's `LifetimeServoController` from sending temperature targets to `AppleCLPC` (Closed Loop Power Controller). The daemon's main polling loop continues running but its reclaim logic is suppressed while `Ftst` remains set. The unlock succeeds because `AppleCLPC` checks the `Ftst` flag in firmware before enforcing Mode 3.
 
