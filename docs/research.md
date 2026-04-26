@@ -89,7 +89,6 @@ Prior research [^7][^8][^9] found the following keys, which were verified for Ap
 
 > **Key format**: `%d` is a placeholder for the fan index (0-based). For example, `F0Ac` is fan 0's actual RPM, `F1Tg` is fan 1's target RPM.
 
-
 | Key                | Type    | Description                                                                                                                              |
 | ------------------ | ------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
 | `FNum`             | `uint8` | Number of fans                                                                                                                           |
@@ -99,7 +98,6 @@ Prior research [^7][^8][^9] found the following keys, which were verified for Ap
 | `F%dMx`            | `float` | Recommended maximum RPM (guideline, not enforced)                                                                                        |
 | `F%dMd` or `F%dmd` | `uint8` | Mode `0=auto`, `1=manual`, `3=system`). Key casing varies: For example, uppercase on M4 Max, lowercase on M5 Max. Probe both at runtime. |
 | `Ftst`             | `uint8` | Force/test flag. Absent on M5 Max.                                                                                                       |
-
 
 **Note on Min/Max Values**: The `F%dMn` and `F%dMx` keys report recommended operating ranges, not hard limits. Testing confirms:
 
@@ -118,14 +116,12 @@ Cross-platform code must detect and handle both formats [^5][^6]. See [Architect
 
 The values for the mode key (`F%dMd` or `F%dmd`, depending on hardware; see [M5 Generation](#m5-generation)) were identified by monitoring system state transitions during experimental testing and analyzing the decompiled `thermalmonitord` logic. Subsequent references to "the mode key" in this document apply to whichever casing variant is present on the target hardware. The mode names (Auto, Manual, System) are informal labels, not official Apple terminology.
 
-
 | Mode | Name   | Description                                                                 |
 | ---- | ------ | --------------------------------------------------------------------------- |
 | `0`  | Auto   | System manages fans, target defaults to minimum RPM                         |
 | `1`  | Manual | User controls target RPM via `F%dTg`                                        |
 | `2`  | ?      | Legacy (T2): Forced manual mode; not observed on Apple Silicon              |
 | `3`  | System | Active mitigation state (`AppleCLPC`); firmware rejects manual mode changes |
-
 
 Mode 3 is the default on Apple Silicon when `thermalmonitord` is managing system thermals. The unlock sequence transitions the system from mode 3 → 0, then allows setting mode 1.
 
@@ -253,16 +249,13 @@ Observed reclaim behavior and persistence requirements are summarized in [Daemon
 
 **IOKit Errors:**
 
-
 | Code         | Name                     | Description                                                       |
 | ------------ | ------------------------ | ----------------------------------------------------------------- |
 | `0xe00002c2` | `kIOReturnNotPrivileged` | Operation requires root privileges (use privileged helper daemon) |
 
-
 **SMC Errors (returned in `result` field):**
 
 These codes are from VirtualSMC SDK[^16], the authoritative source for Apple SMC protocol documentation.
-
 
 | Code   | Name                  | Description                                                                                                                                                                                                 |
 | ------ | --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -278,7 +271,6 @@ These codes are from VirtualSMC SDK[^16], the authoritative source for Apple SMC
 | `0x87` | `SmcKeySizeMismatch`  | Data size mismatch (may still apply value)                                                                                                                                                                  |
 | `0x88` | `SmcFramingError`     | Protocol framing error                                                                                                                                                                                      |
 | `0x89` | `SmcBadArgumentError` | Bad argument to SMC function                                                                                                                                                                                |
-
 
 Note: `0x87` errors on `F0Tg` writes sometimes succeed. The value is applied despite the error response.
 
@@ -383,7 +375,6 @@ The following claims require additional verification, and the methodologies used
 
 ### Hardware Compatibility
 
-
 | Hardware             | Status       | Notes                                                                                                                                                                                                                                             |
 | -------------------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | M1                   | **Tested**   | Direct writes to `F%dMd=1` are confirmed to work on the tested M1 machine without the `Ftst` unlock.                                                                                                                                              |
@@ -394,9 +385,7 @@ The following claims require additional verification, and the methodologies used
 | T2 (Intel)           | **Untested** | Mode 2 behavior is referenced in prior work but not verified here.                                                                                                                                                                                |
 | Mac Studio / Mac Pro | **Untested** | Multi-fan desktop behavior remains unverified.                                                                                                                                                                                                    |
 
-
 ### Inferred Behaviors
-
 
 | Item                               | Status           | Evidence                                                                                                                                                                                                                                                                                               |
 | ---------------------------------- | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -408,11 +397,9 @@ The following claims require additional verification, and the methodologies used
 | Mode 0 "minimum RPM" meaning       | **Not verified** | Mode 0 is described as "target defaults to minimum RPM" in the mode table, but it is unconfirmed whether that minimum corresponds to the `F%dMn` key value or some other firmware-determined floor.                                                                                                    |
 | Mode 0 thermal ramping             | **Not verified** | Unknown whether firmware-level mode 0 performs its own thermal ramping independent of `thermalmonitord`, or if fans simply hold at the default minimum. Only mode 3 has been observed to allow 0 RPM idle.                                                                                             |
 
-
 ### Alternative Control Mechanisms
 
 Decompiled code analysis has identified potential alternative approaches that may provide cleaner or more persistent control than the `Ftst` unlock mechanism:
-
 
 | Approach                     | Status       | Notes                                                                                                                                                                                                                              |
 | ---------------------------- | ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -420,11 +407,9 @@ Decompiled code analysis has identified potential alternative approaches that ma
 | Direct IOKit property writes | **Untested** | Properties like `LifetimeServoDieTemperatureTargetPropertyKey` (M1/M2) and `LifetimeServoFastDieTemperatureTarget` (M3/M4) written to `AppleCLPC` or `AppleDieTempController`. May communicate directly with hardware controllers. |
 | Alternative diagnostic keys  | **Partial**  | `TG0B`, `TG0V`, `zETM`, `zEAR`, `TGraph` identified but not tested for fan control. `Ftst` appears to be the primary diagnostic override.                                                                                          |
 
-
 ### Future Research Directions
 
 The same research methodologies could reveal other SMC-controllable parameters:
-
 
 | Area               | Potential                                          |
 | ------------------ | -------------------------------------------------- |
@@ -434,9 +419,7 @@ The same research methodologies could reveal other SMC-controllable parameters:
 | Battery Management | Charge limits, health parameters                   |
 | System Telemetry   | Undocumented sensor data                           |
 
-
 ### Edge Cases
-
 
 | Item                                        | Status       | Notes                                                                                            |
 | ------------------------------------------- | ------------ | ------------------------------------------------------------------------------------------------ |
@@ -444,7 +427,6 @@ The same research methodologies could reveal other SMC-controllable parameters:
 | Boot arguments (`smc-debug`, `smc-logsize`) | **Untested** | Identified in decompiled code but not tested for output                                          |
 | Helper crash with `Ftst=1` active           | **Untested** | Potential thermal management gap if helper crashes without resetting `Ftst`                      |
 | Fan coupling on M3/M4                       | **Partial**  | Community reports suggest synchronized fan behavior on some models. Not consistently reproduced. |
-
 
 ## Takeaways
 
