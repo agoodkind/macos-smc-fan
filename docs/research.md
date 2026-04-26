@@ -296,7 +296,30 @@ typedef struct {
 
 ### Swift Layout
 
-Despite initial concerns about Swift struct padding differing from C, testing with `MemoryLayout.offset` confirms that Swift correctly places all fields at the expected kernel ABI offsets. The nested `keyInfo_t` struct has `size=9` but `stride=12`, and Swift's layout engine properly accounts for this when computing parent struct offsets. This means pure Swift implementations can work without C bridging code (see `Sources/SMCKit/SMCTypes.swift` and `Sources/SMCKit/SMCConnection.swift` for the implementation). The key is using `MemoryLayout<SMCKeyData_t>.stride` (not `.size`) when calling `IOConnectCallStructMethod`.
+The same 80-byte structure is expressed in Swift as `SMCParamStruct` in [`Sources/SMCKit/SMCTypes.swift`](../Sources/SMCKit/SMCTypes.swift). The Swift definition mirrors the C layout above, with nested types for `Version`, `PLimitData`, and `KeyInfo`:
+
+```swift
+public struct SMCParamStruct {
+    public typealias Bytes32 = (UInt8, UInt8, UInt8, UInt8, /* ...32 bytes... */)
+
+    public struct Version {     /* 4 bytes: major, minor, build, reserved + UInt16 release */ }
+    public struct PLimitData {  /* 16 bytes: version, length, cpuPLimit, gpuPLimit, memPLimit */ }
+    public struct KeyInfo {     /* dataSize, dataType, dataAttributes (size=9, stride=12) */ }
+
+    public var key: UInt32        // 0-3
+    public var vers = Version()   // 4-7
+    public var pLimitData = PLimitData()  // 8-23
+    public var keyInfo = KeyInfo()        // 28-39 (Swift stride aligns to C offset 28)
+    public var padding: UInt16    // 24-27 region; covered by automatic Swift alignment
+    public var result: UInt8      // 40
+    public var status: UInt8      // 41
+    public var data8: UInt8       // 42
+    public var data32: UInt32     // 44-47
+    public var bytes: Bytes32     // 48-79
+}
+```
+
+Despite initial concerns about Swift struct padding differing from C, testing with `MemoryLayout.offset` confirms that Swift places all fields at the expected kernel ABI offsets. The nested `KeyInfo` struct has `size=9` but `stride=12`, and Swift's layout engine accounts for this when computing parent struct offsets. Pure Swift implementations work without C bridging code, as long as `MemoryLayout<SMCParamStruct>.stride` (not `.size`) is used when calling `IOConnectCallStructMethod`. See [`Sources/SMCKit/SMCConnection.swift`](../Sources/SMCKit/SMCConnection.swift) for the call sites.
 
 ### Debugging
 
@@ -381,7 +404,7 @@ The following claims require additional verification, and the methodologies used
 | M2                   | **Untested** | M2 remains an open point in this research.                                                                                                                                                                                                        |
 | M3                   | **Untested** | M3 remains an open point in this research.                                                                                                                                                                                                        |
 | M4                   | **Tested**   | The tested M4 machine uses the uppercase `F%dMd` form, exposes `Ftst`, and appears to require the unlock path when direct mode writes are blocked.                                                                                                |
-| M5 (Mac17,7)         | **Tested**   | The tested M5 machine uses the lowercase `F%dmd` form, does not expose `Ftst`, and appears to accept direct manual-mode writes. Below-min targets appear to clamp to the reported minimum, and auto-mode target behavior needs clearer retesting. |
+| M5 (`Mac17,7`)       | **Tested**   | The tested M5 machine uses the lowercase `F%dmd` form, does not expose `Ftst`, and appears to accept direct manual-mode writes. Below-min targets appear to clamp to the reported minimum, and auto-mode target behavior needs clearer retesting. |
 | T2 (Intel)           | **Untested** | Mode 2 behavior is referenced in prior work but not verified here.                                                                                                                                                                                |
 | Mac Studio / Mac Pro | **Untested** | Multi-fan desktop behavior remains unverified.                                                                                                                                                                                                    |
 
