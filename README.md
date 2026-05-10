@@ -59,16 +59,8 @@ Find your Team ID at: [https://developer.apple.com/account](https://developer.ap
 
 ### Build
 
-Production build (with code signing):
-
 ```bash
 make all
-```
-
-Development build (libraries only, no code signing needed):
-
-```bash
-swift build
 ```
 
 ### Install
@@ -78,7 +70,7 @@ swift build
 # Enter password when prompted
 ```
 
-The installer uses [`SMJobBless`](https://developer.apple.com/documentation/servicemanagement/smjobbless(_:_:_:_:)) to install a privileged helper daemon.
+The installer uses [`SMAppService`](https://developer.apple.com/documentation/servicemanagement/smappservice) to install a privileged helper daemon.
 
 ### Usage
 
