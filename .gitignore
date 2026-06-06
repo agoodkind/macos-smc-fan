@@ -22,6 +22,9 @@ Config/local.xcconfig
 .idea/
 *.code-workspace
 
+# swift-mk scratch (fetched modules, built binary, logs)
+.make/
+
 # Misc
 *.profraw
 .mypy_cache/
