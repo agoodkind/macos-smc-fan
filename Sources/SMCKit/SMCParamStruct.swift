@@ -101,7 +101,9 @@ public struct SMCParamStruct {
     public var reserved: UInt8 = 0
     public var release: UInt16 = 0
 
-    public init() {}
+    public init() {
+      // Fields use their declared default values.
+    }
   }
 
   public struct PLimitData {
@@ -111,7 +113,9 @@ public struct SMCParamStruct {
     public var gpuPLimit: UInt32 = 0
     public var memPLimit: UInt32 = 0
 
-    public init() {}
+    public init() {
+      // Fields use their declared default values.
+    }
   }
 
   public struct KeyInfo {
@@ -119,7 +123,9 @@ public struct SMCParamStruct {
     public var dataType: UInt32 = 0
     public var dataAttributes: UInt8 = 0
 
-    public init() {}
+    public init() {
+      // Fields use their declared default values.
+    }
   }
 
   public var key: UInt32 = 0
@@ -136,5 +142,7 @@ public struct SMCParamStruct {
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
   )
 
-  public init() {}
+  public init() {
+    // Fields use their declared default values.
+  }
 }

@@ -74,7 +74,9 @@ final class ResumeGuard: @unchecked Sendable {
   private var fired = false
   private let lock = NSLock()
 
-  init() {}
+  init() {
+    // No stored state to configure; the guard starts un-fired.
+  }
 
   func tryResume(_ action: () -> Void) {
     lock.lock()

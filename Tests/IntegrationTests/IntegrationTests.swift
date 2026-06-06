@@ -271,12 +271,12 @@ final class IntegrationTests: XCTestCase {
 
       let diff = abs(actualRPM - targetRPM) / max(targetRPM, 1)
       if diff <= tolerance {
-        runCLI(["auto", "0"]) { _, _ in }
+        runCLI(["auto", "0"]) { _, _ in /* result intentionally ignored */ }
         return
       }
     }
 
-    runCLI(["auto", "0"]) { _, _ in }
+    runCLI(["auto", "0"]) { _, _ in /* result intentionally ignored */ }
     XCTFail(
       "Fan 0 actual RPM \(Int(actualRPM)) did not reach target \(Int(targetRPM)) within 10% after \(timeout)s"
     )
@@ -337,8 +337,8 @@ final class IntegrationTests: XCTestCase {
 
   func testIndependentFanControl_SetFan1DoesNotAffectFan0() throws {
     // First reset both fans to auto
-    runCLI(["auto", "0"]) { _, _ in }
-    runCLI(["auto", "1"]) { _, _ in }
+    runCLI(["auto", "0"]) { _, _ in /* result intentionally ignored */ }
+    runCLI(["auto", "1"]) { _, _ in /* result intentionally ignored */ }
     Thread.sleep(forTimeInterval: 3.0)
 
     // Get initial state of Fan 0
@@ -383,7 +383,7 @@ final class IntegrationTests: XCTestCase {
     wait(for: [verifyExpectation], timeout: 10.0)
 
     // Cleanup
-    runCLI(["auto", "1"]) { _, _ in }
+    runCLI(["auto", "1"]) { _, _ in /* result intentionally ignored */ }
   }
 
   func testIndependentFanControl_BothFansManualDifferentSpeeds() throws {
@@ -429,13 +429,13 @@ final class IntegrationTests: XCTestCase {
     wait(for: [verifyExpectation], timeout: 10.0)
 
     // Cleanup
-    runCLI(["auto", "0"]) { _, _ in }
-    runCLI(["auto", "1"]) { _, _ in }
+    runCLI(["auto", "0"]) { _, _ in /* result intentionally ignored */ }
+    runCLI(["auto", "1"]) { _, _ in /* result intentionally ignored */ }
   }
 
   func testPartialAutoMode_OneFanAutoOneManual() throws {
-    runCLISet(["set", "0", "5000"]) { _, _ in }
-    runCLISet(["set", "1", "5000"]) { _, _ in }
+    runCLISet(["set", "0", "5000"]) { _, _ in /* result intentionally ignored */ }
+    runCLISet(["set", "1", "5000"]) { _, _ in /* result intentionally ignored */ }
     Thread.sleep(forTimeInterval: 2.0)
 
     // Set Fan 1 to auto, Fan 0 stays manual
@@ -468,11 +468,11 @@ final class IntegrationTests: XCTestCase {
     wait(for: [verifyExpectation], timeout: 10.0)
 
     // Cleanup
-    runCLI(["auto", "0"]) { _, _ in }
+    runCLI(["auto", "0"]) { _, _ in /* result intentionally ignored */ }
   }
 
   func testSystemModeRestoration_AllFansAuto() throws {
-    runCLISet(["set", "0", "5000"]) { _, _ in }
+    runCLISet(["set", "0", "5000"]) { _, _ in /* result intentionally ignored */ }
     Thread.sleep(forTimeInterval: 2.0)
 
     // Set back to auto
@@ -546,8 +546,8 @@ final class IntegrationTests: XCTestCase {
     wait(for: [verifyExpectation], timeout: 10.0)
 
     // Cleanup
-    runCLI(["auto", "0"]) { _, _ in }
-    runCLI(["auto", "1"]) { _, _ in }
+    runCLI(["auto", "0"]) { _, _ in /* result intentionally ignored */ }
+    runCLI(["auto", "1"]) { _, _ in /* result intentionally ignored */ }
     Thread.sleep(forTimeInterval: 3.0)
   }
 
@@ -589,8 +589,8 @@ final class IntegrationTests: XCTestCase {
     }
     wait(for: [verifyExpectation], timeout: 10.0)
 
-    runCLI(["auto", "0"]) { _, _ in }
-    runCLI(["auto", "1"]) { _, _ in }
+    runCLI(["auto", "0"]) { _, _ in /* result intentionally ignored */ }
+    runCLI(["auto", "1"]) { _, _ in /* result intentionally ignored */ }
     Thread.sleep(forTimeInterval: 3.0)
   }
 
@@ -624,8 +624,8 @@ final class IntegrationTests: XCTestCase {
     wait(for: [verifyExpectation], timeout: 10.0)
 
     // Cleanup
-    runCLI(["auto", "0"]) { _, _ in }
-    runCLI(["auto", "1"]) { _, _ in }
+    runCLI(["auto", "0"]) { _, _ in /* result intentionally ignored */ }
+    runCLI(["auto", "1"]) { _, _ in /* result intentionally ignored */ }
     Thread.sleep(forTimeInterval: 3.0)
   }
 
@@ -634,8 +634,8 @@ final class IntegrationTests: XCTestCase {
       throw XCTSkip("[\(hw.chipName)] No Ftst on this hardware, manual mode does not wake other fans")
     }
 
-    runCLI(["auto", "0"]) { _, _ in }
-    runCLI(["auto", "1"]) { _, _ in }
+    runCLI(["auto", "0"]) { _, _ in /* result intentionally ignored */ }
+    runCLI(["auto", "1"]) { _, _ in /* result intentionally ignored */ }
     Thread.sleep(forTimeInterval: 5.0)
 
     let initialExpectation = XCTestExpectation(description: "Initial idle")
@@ -681,8 +681,8 @@ final class IntegrationTests: XCTestCase {
     }
     wait(for: [verifyExpectation], timeout: 10.0)
 
-    runCLI(["auto", "0"]) { _, _ in }
-    runCLI(["auto", "1"]) { _, _ in }
+    runCLI(["auto", "0"]) { _, _ in /* result intentionally ignored */ }
+    runCLI(["auto", "1"]) { _, _ in /* result intentionally ignored */ }
     Thread.sleep(forTimeInterval: 3.0)
   }
 
@@ -692,8 +692,8 @@ final class IntegrationTests: XCTestCase {
   /// Records transition times and verifies state changes
   func testTransition_AutoToManual() throws {
     // Start from clean auto state
-    runCLI(["auto", "0"]) { _, _ in }
-    runCLI(["auto", "1"]) { _, _ in }
+    runCLI(["auto", "0"]) { _, _ in /* result intentionally ignored */ }
+    runCLI(["auto", "1"]) { _, _ in /* result intentionally ignored */ }
     Thread.sleep(forTimeInterval: 3.0)
 
     let expectation = XCTestExpectation(description: "Auto to Manual")
@@ -723,13 +723,13 @@ final class IntegrationTests: XCTestCase {
     wait(for: [verifyExpectation], timeout: 10.0)
 
     // Cleanup
-    runCLI(["auto", "1"]) { _, _ in }
+    runCLI(["auto", "1"]) { _, _ in /* result intentionally ignored */ }
   }
 
   func testTransition_BothFansManual() throws {
     // Start from clean auto state
-    runCLI(["auto", "0"]) { _, _ in }
-    runCLI(["auto", "1"]) { _, _ in }
+    runCLI(["auto", "0"]) { _, _ in /* result intentionally ignored */ }
+    runCLI(["auto", "1"]) { _, _ in /* result intentionally ignored */ }
     Thread.sleep(forTimeInterval: 3.0)
 
     let set1Expectation = XCTestExpectation(description: "Set Fan 1")
@@ -771,13 +771,13 @@ final class IntegrationTests: XCTestCase {
     wait(for: [verifyExpectation], timeout: 10.0)
 
     // Cleanup
-    runCLI(["auto", "0"]) { _, _ in }
-    runCLI(["auto", "1"]) { _, _ in }
+    runCLI(["auto", "0"]) { _, _ in /* result intentionally ignored */ }
+    runCLI(["auto", "1"]) { _, _ in /* result intentionally ignored */ }
   }
 
   func testTransition_PartialAuto() throws {
-    runCLISet(["set", "0", "6000"]) { _, _ in }
-    runCLISet(["set", "1", "5000"]) { _, _ in }
+    runCLISet(["set", "0", "6000"]) { _, _ in /* result intentionally ignored */ }
+    runCLISet(["set", "1", "5000"]) { _, _ in /* result intentionally ignored */ }
     Thread.sleep(forTimeInterval: 3.0)
 
     // Return Fan 1 to auto (Fan 0 still manual)
@@ -810,11 +810,11 @@ final class IntegrationTests: XCTestCase {
     wait(for: [verifyExpectation], timeout: 10.0)
 
     // Cleanup
-    runCLI(["auto", "0"]) { _, _ in }
+    runCLI(["auto", "0"]) { _, _ in /* result intentionally ignored */ }
   }
 
   func testTransition_SystemModeRestored() throws {
-    runCLISet(["set", "0", "5000"]) { _, _ in }
+    runCLISet(["set", "0", "5000"]) { _, _ in /* result intentionally ignored */ }
     Thread.sleep(forTimeInterval: 2.0)
 
     // Return last fan to auto (should trigger Ftst=0)
@@ -842,7 +842,7 @@ final class IntegrationTests: XCTestCase {
   }
 
   func testTransition_ManualToManual_Fast() throws {
-    runCLISet(["set", "0", "4000"]) { _, _ in }
+    runCLISet(["set", "0", "4000"]) { _, _ in /* result intentionally ignored */ }
     Thread.sleep(forTimeInterval: 2.0)
 
     let startTime = CFAbsoluteTimeGetCurrent()
@@ -875,8 +875,8 @@ final class IntegrationTests: XCTestCase {
     wait(for: [verifyExpectation], timeout: 10.0)
 
     // Cleanup
-    runCLI(["auto", "0"]) { _, _ in }
-    runCLI(["auto", "1"]) { _, _ in }
+    runCLI(["auto", "0"]) { _, _ in /* result intentionally ignored */ }
+    runCLI(["auto", "1"]) { _, _ in /* result intentionally ignored */ }
   }
 
   // MARK: - Transition Helper
