@@ -52,3 +52,25 @@ jobs:
       - name: Check for build warnings
         run: |
           swift build 2>&1 | grep -i "warning" || echo "No warnings"
+
+  # swift-mk shared gates, now that macos-smc-fan is a swift-mk consumer. Signing
+  # for the dead-code coverage build is ad-hoc in CI (no cert), supplied through
+  # swift-mk's override via CODE_SIGN_IDENTITY=-. Requires the seeded swift-mk
+  # baselines to be committed.
+  swift-mk-gates:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: agoodkind/swift-makefile/.github/actions/setup-build-env@main
+        with:
+          xcode-version: "latest-stable"
+          github-token: ${{ github.token }}
+
+      - name: Install lint tools
+        run: brew install xcodegen swiftlint swift-format peripheryapp/periphery/periphery
+
+      - name: Run swift-mk gates
+        env:
+          CODE_SIGN_IDENTITY: "-"
+        run: make lint
