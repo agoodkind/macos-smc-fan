@@ -124,10 +124,10 @@ public final class SMCConnection: @unchecked Sendable {
         log.debug("smc.enumerate.start total=\(totalKeys, privacy: .public)")
 
         var keys: [String] = []
-        for i in 0..<totalKeys {
+        for index in 0..<totalKeys {
             var inp = SMCParamStruct()
             inp.data8 = SMCCommand.readIndex.rawValue
-            inp.data32 = UInt32(i)
+            inp.data32 = UInt32(index)
             guard let out = try? callSMC(input: inp) else {
                 continue
             }

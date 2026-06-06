@@ -92,9 +92,9 @@ final class ResumeGuard: @unchecked Sendable {
   /// Observable state for tests. Do not use in production code paths.
   var hasFired: Bool {
     lock.lock()
-    let v = fired
+    let current = fired
     lock.unlock()
-    return v
+    return current
   }
 }
 
@@ -235,9 +235,9 @@ public final class SMCFanXPCClient: @unchecked Sendable {
 
   private func isOpened() -> Bool {
     self.lock.lock()
-    let v = self.smcOpened
+    let current = self.smcOpened
     self.lock.unlock()
-    return v
+    return current
   }
 
   private func markRegistered() {
@@ -248,9 +248,9 @@ public final class SMCFanXPCClient: @unchecked Sendable {
 
   private func isRegistered() -> Bool {
     self.lock.lock()
-    let v = self.registered
+    let current = self.registered
     self.lock.unlock()
-    return v
+    return current
   }
 
   private func ensureOpened() async throws {
@@ -332,13 +332,13 @@ public final class SMCFanXPCClient: @unchecked Sendable {
           continuation.resume(throwing: SMCXPCError(error.localizedDescription))
         }
       }
-      guard let p = proxy as? SMCFanHelperProtocol else {
+      guard let typedProxy = proxy as? SMCFanHelperProtocol else {
         once.tryResume {
           continuation.resume(throwing: SMCXPCError("Failed to get proxy"))
         }
         return
       }
-      p.smcGetFanInfo(index) { success, actual, target, min, max, manual, error in
+      typedProxy.smcGetFanInfo(index) { success, actual, target, min, max, manual, error in
         once.tryResume {
           if success {
             continuation.resume(
@@ -400,11 +400,11 @@ public final class SMCFanXPCClient: @unchecked Sendable {
           continuation.resume(returning: [])
         }
       }
-      guard let p = proxy as? SMCFanHelperProtocol else {
+      guard let typedProxy = proxy as? SMCFanHelperProtocol else {
         once.tryResume { continuation.resume(returning: []) }
         return
       }
-      p.smcEnumerateKeys { keys in
+      typedProxy.smcEnumerateKeys { keys in
         once.tryResume { continuation.resume(returning: keys) }
       }
     }
@@ -420,11 +420,11 @@ public final class SMCFanXPCClient: @unchecked Sendable {
           continuation.resume(throwing: SMCXPCError(error.localizedDescription))
         }
       }
-      guard let p = proxy as? SMCFanHelperProtocol else {
+      guard let typedProxy = proxy as? SMCFanHelperProtocol else {
         once.tryResume { continuation.resume(throwing: SMCXPCError("Failed to get proxy")) }
         return
       }
-      p.smcRegisterClient(name: name) { success, message in
+      typedProxy.smcRegisterClient(name: name) { success, message in
         once.tryResume {
           if success { continuation.resume() } else { continuation.resume(throwing: SMCXPCError(message)) }
         }
@@ -444,19 +444,19 @@ public final class SMCFanXPCClient: @unchecked Sendable {
           continuation.resume(throwing: SMCXPCError(error.localizedDescription))
         }
       }
-      guard let p = proxy as? SMCFanHelperProtocol else {
+      guard let typedProxy = proxy as? SMCFanHelperProtocol else {
         once.tryResume { continuation.resume(throwing: SMCXPCError("Failed to get proxy")) }
         return
       }
-      p.smcGetOwnership { fans, names, priorities, ages in
+      typedProxy.smcGetOwnership { fans, names, priorities, ages in
         once.tryResume {
           let count = min(fans.count, names.count, priorities.count, ages.count)
-          let entries: [OwnershipEntry] = (0..<count).map { i in
+          let entries: [OwnershipEntry] = (0..<count).map { index in
             OwnershipEntry(
-              fanIndex: fans[i],
-              clientName: names[i],
-              priority: priorities[i],
-              secondsSinceLastWrite: ages[i]
+              fanIndex: fans[index],
+              clientName: names[index],
+              priority: priorities[index],
+              secondsSinceLastWrite: ages[index]
             )
           }
           continuation.resume(returning: entries)
@@ -485,13 +485,13 @@ public final class SMCFanXPCClient: @unchecked Sendable {
           continuation.resume(throwing: SMCXPCError(error.localizedDescription))
         }
       }
-      guard let p = proxy as? SMCFanHelperProtocol else {
+      guard let typedProxy = proxy as? SMCFanHelperProtocol else {
         once.tryResume {
           continuation.resume(throwing: SMCXPCError("Failed to get proxy"))
         }
         return
       }
-      block(p) { success, value, error in
+      block(typedProxy) { success, value, error in
         once.tryResume {
           if success {
             continuation.resume(returning: value)
@@ -529,13 +529,13 @@ public final class SMCFanXPCClient: @unchecked Sendable {
           continuation.resume(throwing: SMCXPCError(error.localizedDescription))
         }
       }
-      guard let p = proxy as? SMCFanHelperProtocol else {
+      guard let typedProxy = proxy as? SMCFanHelperProtocol else {
         once.tryResume {
           continuation.resume(throwing: SMCXPCError("Failed to get proxy"))
         }
         return
       }
-      block(p) { success, error in
+      block(typedProxy) { success, error in
         once.tryResume {
           if success { continuation.resume() } else { continuation.resume(throwing: SMCXPCError(error)) }
         }
@@ -565,13 +565,13 @@ public final class SMCFanXPCClient: @unchecked Sendable {
           continuation.resume(throwing: SMCXPCError(error.localizedDescription))
         }
       }
-      guard let p = proxy as? SMCFanHelperProtocol else {
+      guard let typedProxy = proxy as? SMCFanHelperProtocol else {
         once.tryResume {
           continuation.resume(throwing: SMCXPCError("Failed to get proxy"))
         }
         return
       }
-      block(p) { success, preempted, error in
+      block(typedProxy) { success, preempted, error in
         once.tryResume {
           if success {
             continuation.resume()
@@ -619,10 +619,10 @@ public final class SMCFanXPCClient: @unchecked Sendable {
         sem.signal()
       }
     }
-    guard let p = proxy as? SMCFanHelperProtocol else {
+    guard let typedProxy = proxy as? SMCFanHelperProtocol else {
       throw SMCXPCError("Failed to get proxy")
     }
-    p.smcGetFanInfo(index) { success, actual, target, min, max, manual, error in
+    typedProxy.smcGetFanInfo(index) { success, actual, target, min, max, manual, error in
       once.tryResume {
         if success {
           infoBox.info = FanInfo(
@@ -700,10 +700,10 @@ public final class SMCFanXPCClient: @unchecked Sendable {
         sem.signal()
       }
     }
-    guard let p = proxy as? SMCFanHelperProtocol else {
+    guard let typedProxy = proxy as? SMCFanHelperProtocol else {
       throw SMCXPCError("Failed to get proxy")
     }
-    block(p) { success, error in
+    block(typedProxy) { success, error in
       once.tryResume {
         if !success {
           errBox.error = SMCXPCError(error)
@@ -737,10 +737,10 @@ public final class SMCFanXPCClient: @unchecked Sendable {
         sem.signal()
       }
     }
-    guard let p = proxy as? SMCFanHelperProtocol else {
+    guard let typedProxy = proxy as? SMCFanHelperProtocol else {
       throw SMCXPCError("Failed to get proxy")
     }
-    block(p) { success, preempted, error in
+    block(typedProxy) { success, preempted, error in
       once.tryResume {
         if !success {
           if preempted {

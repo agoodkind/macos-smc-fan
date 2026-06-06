@@ -29,7 +29,7 @@ final class SMCDataFormatTests: XCTestCase {
     var expected: Float = 7_826.0
     var bytes: [UInt8] = Array(repeating: 0, count: 32)
     withUnsafeBytes(of: &expected) { srcBytes in
-      for i in 0..<4 { bytes[i] = srcBytes[i] }
+      for index in 0..<4 { bytes[index] = srcBytes[index] }
     }
     let result = SMCDataFormat.float(from: bytes, size: 4)
     expect(result).to(beCloseTo(7_826.0, within: 0.1))

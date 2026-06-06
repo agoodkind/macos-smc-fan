@@ -59,8 +59,8 @@ private final class Counter: @unchecked Sendable {
   }
   var value: Int {
     lock.lock()
-    let v = _value
+    let current = _value
     lock.unlock()
-    return v
+    return current
   }
 }

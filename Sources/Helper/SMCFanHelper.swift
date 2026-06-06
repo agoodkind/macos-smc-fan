@@ -370,9 +370,9 @@ class SMCFanHelper: NSObject, NSXPCListenerDelegate, SMCFanHelperProtocol, @unch
         }
 
         var otherFansManual = 0
-        for i in 0..<fanCount {
-            if i == Int(fanIndex) { continue }
-            let checkKey = SMCFanKey.key(fanController.config.modeKeyFormat, fan: i)
+        for otherIndex in 0..<fanCount {
+            if otherIndex == Int(fanIndex) { continue }
+            let checkKey = SMCFanKey.key(fanController.config.modeKeyFormat, fan: otherIndex)
             do {
                 let (checkBytes, _) = try fanController.connection.readKey(checkKey)
                 if !checkBytes.isEmpty, checkBytes[0] == 1 { otherFansManual += 1 }

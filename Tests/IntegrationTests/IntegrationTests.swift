@@ -1003,10 +1003,10 @@ final class IntegrationTests: XCTestCase {
       fanCount = UInt(numStr) ?? 2
     }
 
-    for i in 0..<min(fanCount, 4) {
+    for fanIndex in 0..<min(fanCount, 4) {
       let proc = Process()
       proc.executableURL = URL(fileURLWithPath: path)
-      proc.arguments = ["auto", String(i)]
+      proc.arguments = ["auto", String(fanIndex)]
       proc.standardOutput = FileHandle.nullDevice
       proc.standardError = FileHandle.nullDevice
       try? proc.run()

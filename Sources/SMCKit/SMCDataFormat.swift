@@ -41,7 +41,7 @@ public enum SMCDataFormat: Sendable {
     var result = [UInt8](repeating: 0, count: Int(size))
     if size == 4 {
       withUnsafeBytes(of: value) { bytes in
-        for i in 0..<4 { result[i] = bytes[i] }
+        for index in 0..<4 { result[index] = bytes[index] }
       }
     } else {
       let raw = UInt16(value * 4.0)

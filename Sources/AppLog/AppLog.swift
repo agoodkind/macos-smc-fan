@@ -213,8 +213,8 @@ private struct OSLogHandler: LogHandler, Sendable {
         case .critical: .fault
         }
         var merged = metadata
-        if let m = event.metadata {
-            merged.merge(m) { _, new in new }
+        if let eventMetadata = event.metadata {
+            merged.merge(eventMetadata) { _, new in new }
         }
         let suffix = merged.isEmpty ? "" : " meta=\(merged.description)"
         logger.log(

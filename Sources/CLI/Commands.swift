@@ -27,10 +27,10 @@ enum Commands {
     let count = try await client.getFanCount()
     CLIOut.print("Fans: \(count)")
 
-    for i in 0..<count {
-      let info = try await client.getFanInfo(i)
+    for fanIndex in 0..<count {
+      let info = try await client.getFanInfo(fanIndex)
       CLIOut.print(
-        "Fan \(i): \(Int(info.actualRPM)) RPM (Target: \(Int(info.targetRPM)), Min: \(Int(info.minRPM)), Max: \(Int(info.maxRPM)), Mode: \(info.manualMode ? "Manual" : "Auto"))"
+        "Fan \(fanIndex): \(Int(info.actualRPM)) RPM (Target: \(Int(info.targetRPM)), Min: \(Int(info.minRPM)), Max: \(Int(info.maxRPM)), Mode: \(info.manualMode ? "Manual" : "Auto"))"
       )
     }
 
@@ -112,7 +112,7 @@ enum Commands {
     let client = makeClient(priority: priority)
     try await client.open()
     let allKeys = await client.enumerateKeys()
-    let filtered = filter.map { f in allKeys.filter { $0.hasPrefix(f) } } ?? allKeys
+    let filtered = filter.map { prefix in allKeys.filter { $0.hasPrefix(prefix) } } ?? allKeys
     log.debug(
       "smc.keys.enumerated total=\(allKeys.count, privacy: .public) matching=\(filtered.count, privacy: .public)"
     )

@@ -22,14 +22,14 @@ struct CLIInvocation {
 
 func parseCLI(_ argv: [String]) -> CLIInvocation {
   var inv = CLIInvocation()
-  var i = 1
-  while i < argv.count {
-    let arg = argv[i]
+  var argIndex = 1
+  while argIndex < argv.count {
+    let arg = argv[argIndex]
     switch arg {
     case "--priority":
-      if i + 1 < argv.count, let value = Int(argv[i + 1]) {
+      if argIndex + 1 < argv.count, let value = Int(argv[argIndex + 1]) {
         inv.priority = value
-        i += 1
+        argIndex += 1
       } else {
         CLIOut.err("Missing integer value for --priority")
         exit(2)
@@ -41,7 +41,7 @@ func parseCLI(_ argv: [String]) -> CLIInvocation {
         inv.positional.append(arg)
       }
     }
-    i += 1
+    argIndex += 1
   }
   return inv
 }
