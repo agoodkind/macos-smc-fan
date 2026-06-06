@@ -33,20 +33,80 @@ struct HardwareExpectations: Codable, Sendable {
   let rampFromIdleSeconds: TimeInterval
 }
 
-enum BelowMinBehavior: String, Codable, Sendable {
+/// Decoded from a plist `<string>` whose value is the camelCase case name.
+/// Custom Codable keeps that wire format while leaving the enum without a
+/// `String` raw type, so the case-name lint rules do not conflict.
+enum BelowMinBehavior: Codable, Sendable {
   /// Firmware clamps target to hardware minimum (e.g., Target: 2317)
-  case clampedToMin = "clampedToMin"
+  case clampedToMin
   /// Firmware preserves the exact target value written (e.g., Target: 1000)
   case preserved
+
+  init(from decoder: any Decoder) throws {
+    let wire = try decoder.singleValueContainer().decode(String.self)
+    switch wire {
+    case "clampedToMin":
+      self = .clampedToMin
+    case "preserved":
+      self = .preserved
+    default:
+      throw DecodingError.dataCorrupted(
+        .init(codingPath: decoder.codingPath, debugDescription: "Unknown BelowMinBehavior: \(wire)")
+      )
+    }
+  }
+
+  func encode(to encoder: any Encoder) throws {
+    var container = encoder.singleValueContainer()
+    switch self {
+    case .clampedToMin:
+      try container.encode("clampedToMin")
+    case .preserved:
+      try container.encode("preserved")
+    }
+  }
 }
 
-enum AutoModeTargetBehavior: String, Codable, Sendable {
+/// See `BelowMinBehavior` for why this uses custom Codable instead of a
+/// `String` raw type.
+enum AutoModeTargetBehavior: Codable, Sendable {
   /// Target shows the hardware min RPM (thermalmonitord sets it)
-  case minRPM = "minRPM"
+  case minRPM
   /// Target shows 0 (system control)
   case zero
   /// Either 0 or min RPM depending on thermal state
-  case zeroOrMinRPM = "zeroOrMinRPM"
+  case zeroOrMinRPM
+
+  init(from decoder: any Decoder) throws {
+    let wire = try decoder.singleValueContainer().decode(String.self)
+    switch wire {
+    case "minRPM":
+      self = .minRPM
+    case "zero":
+      self = .zero
+    case "zeroOrMinRPM":
+      self = .zeroOrMinRPM
+    default:
+      throw DecodingError.dataCorrupted(
+        .init(
+          codingPath: decoder.codingPath,
+          debugDescription: "Unknown AutoModeTargetBehavior: \(wire)"
+        )
+      )
+    }
+  }
+
+  func encode(to encoder: any Encoder) throws {
+    var container = encoder.singleValueContainer()
+    switch self {
+    case .minRPM:
+      try container.encode("minRPM")
+    case .zero:
+      try container.encode("zero")
+    case .zeroOrMinRPM:
+      try container.encode("zeroOrMinRPM")
+    }
+  }
 }
 
 extension HardwareExpectations {

@@ -493,7 +493,11 @@ public final class SMCFanXPCClient: @unchecked Sendable {
       }
       block(p) { success, value, error in
         once.tryResume {
-          if success { continuation.resume(returning: value) } else { continuation.resume(throwing: SMCXPCError(error)) }
+          if success {
+            continuation.resume(returning: value)
+          } else {
+            continuation.resume(throwing: SMCXPCError(error))
+          }
         }
       }
     }
