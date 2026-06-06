@@ -3,7 +3,7 @@
 //  SMCFanXPCClientTests
 //
 //  Created by Alex Goodkind <alex@goodkind.io> on 2026-04-20.
-//  Copyright © 2026
+//  Copyright © 2026, all rights reserved.
 //
 //  Unit tests for the exactly once semantics of ResumeGuard. The XPC client's
 //  continuation safety depends on this invariant.

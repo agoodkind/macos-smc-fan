@@ -2,8 +2,11 @@
 //  CLIOut.swift
 //  SMCFan
 //
-// User-facing stdout/stderr writes per Rule 5.
-// Diagnostic output goes to os.Logger, not here.
+//  Created by Alex Goodkind <alex@goodkind.io> on 2026-01-18.
+//  Copyright © 2026, all rights reserved.
+//
+//  User-facing stdout/stderr writes per Rule 5.
+//  Diagnostic output goes to os.Logger, not here.
 //
 
 import Foundation

@@ -1,9 +1,14 @@
-// Tests/AppLogTests/PrivacyEnforcementTests.swift
 //
-// Guard B: compile-time privacy enforcement.
+//  PrivacyEnforcementTests.swift
+//  AppLogTests
 //
-// The #if false block below must FAIL to compile when flipped to #if true.
-// Scripts/check-privacy-enforcement.sh automates this verification.
+//  Created by Alex Goodkind <alex@goodkind.io> on 2026-01-18.
+//  Copyright © 2026, all rights reserved.
+//
+//  Guard B: compile-time privacy enforcement.
+//
+//  The #if false block below must FAIL to compile when flipped to #if true.
+//  Scripts/check-privacy-enforcement.sh automates this verification.
 
 import AppLog
 import Testing

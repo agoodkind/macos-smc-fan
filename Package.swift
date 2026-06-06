@@ -4,7 +4,7 @@
 //  SMCFan
 //
 //  Created by Alex Goodkind <alex@goodkind.io> on 2026-01-18.
-//  Copyright © 2026
+//  Copyright © 2026, all rights reserved.
 //
 
 import PackageDescription

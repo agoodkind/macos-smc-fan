@@ -3,7 +3,7 @@
 //  SMCFanKitTests
 //
 //  Created by Alex Goodkind <alex@goodkind.io> on 2026-04-21.
-//  Copyright © 2026
+//  Copyright © 2026, all rights reserved.
 //
 //  Priority arbitration state machine. No XPC, no threads. Tests pass
 //  synthetic `ObjectIdentifier`s and compare the returned ClaimDecision.

@@ -3,7 +3,7 @@
 //  SMCFanKit
 //
 //  Created by Alex Goodkind <alex@goodkind.io> on 2026-04-21.
-//  Copyright © 2026
+//  Copyright © 2026, all rights reserved.
 //
 //  Pure priority arbitration for SMC fan writes. Owned by the privileged
 //  helper; clients never touch this type directly. Each connection is an

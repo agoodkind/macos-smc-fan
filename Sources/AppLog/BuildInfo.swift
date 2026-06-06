@@ -1,7 +1,12 @@
-// Sources/AppLog/BuildInfo.swift
 //
-// Moved from SMCFanLogging/LogBootstrap.swift.
-// Emitted as a single process.started notice in AppLog.bootstrap.
+//  BuildInfo.swift
+//  AppLog
+//
+//  Created by Alex Goodkind <alex@goodkind.io> on 2026-01-18.
+//  Copyright © 2026, all rights reserved.
+//
+//  Moved from SMCFanLogging/LogBootstrap.swift.
+//  Emitted as a single process.started notice in AppLog.bootstrap.
 
 import CryptoKit
 import Foundation

@@ -1,12 +1,17 @@
-// Sources/AppLog/AppLog.swift
 //
-// Single source of truth for unified logging across the io.goodkind.fan ecosystem.
+//  AppLog.swift
+//  AppLog
 //
-// Design note: make(category:) returns AppLog.Channel rather than os.Logger directly.
-// os.Logger extensions that shadow existing overloads cause ambiguous overload errors
-// when both OSLogMessage and AppLogMessage conform to ExpressibleByStringLiteral.
-// AppLog.Channel exposes only AppLogMessage typed methods, so unannotated interpolation
-// fails to compile (Rule 7 Guard B) without the overload ambiguity.
+//  Created by Alex Goodkind <alex@goodkind.io> on 2026-01-18.
+//  Copyright © 2026, all rights reserved.
+//
+//  Single source of truth for unified logging across the io.goodkind.fan ecosystem.
+//
+//  Design note: make(category:) returns AppLog.Channel rather than os.Logger directly.
+//  os.Logger extensions that shadow existing overloads cause ambiguous overload errors
+//  when both OSLogMessage and AppLogMessage conform to ExpressibleByStringLiteral.
+//  AppLog.Channel exposes only AppLogMessage typed methods, so unannotated interpolation
+//  fails to compile (Rule 7 Guard B) without the overload ambiguity.
 
 import CryptoKit
 import Foundation

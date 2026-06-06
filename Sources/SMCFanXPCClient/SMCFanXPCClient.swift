@@ -2,6 +2,9 @@
 //  SMCFanXPCClient.swift
 //  SMCFanXPCClient
 //
+//  Created by Alex Goodkind <alex@goodkind.io> on 2026-01-18.
+//  Copyright © 2026, all rights reserved.
+//
 
 import AppLog
 import Foundation
