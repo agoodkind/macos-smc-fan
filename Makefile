@@ -24,8 +24,14 @@ SWIFT_DEADCODE_BUILD_CMD := rm -rf $(BUILD_DIR) && $(MAKE) SWIFT_MK_SKIP_FETCH=1
 
 include bootstrap.mk
 
-.PHONY: build-local install-helper uninstall-helper test-integration format \
-	legacy-smcd-uninstall
+.PHONY: build-local generate-project install-helper uninstall-helper \
+	test-integration format legacy-smcd-uninstall
+
+# Kept as the lightweight xcodegen entry point that consumers building this helper
+# directly depend on (e.g. macos-fan-curve's helper-artifacts), independent of the
+# swift-mk `generate` target.
+generate-project:
+	xcodegen generate
 
 # The Xcode app/helper build, run by swift-mk's `build` after the signing prelude
 # exports XCODE_XCCONFIG_FILE, so both schemes sign with the swift-mk identity.
