@@ -193,21 +193,21 @@ public final class SMCFanXPCClient: @unchecked Sendable {
 
     conn.interruptionHandler = { [weak self] in
       log.debug("xpc.connection_interrupted action=reopen_on_next_call")
-      guard let self = self else { return }
-      self.lock.lock()
-      self.smcOpened = false
-      self.registered = false
-      self.lock.unlock()
+      guard let self else { return }
+      lock.lock()
+      smcOpened = false
+      registered = false
+      lock.unlock()
     }
 
     conn.invalidationHandler = { [weak self] in
       log.debug("xpc.connection_invalidated action=recreate_on_next_call")
-      guard let self = self else { return }
-      self.lock.lock()
-      self.connection = nil
-      self.smcOpened = false
-      self.registered = false
-      self.lock.unlock()
+      guard let self else { return }
+      lock.lock()
+      connection = nil
+      smcOpened = false
+      registered = false
+      lock.unlock()
     }
 
     conn.resume()
@@ -425,8 +425,7 @@ public final class SMCFanXPCClient: @unchecked Sendable {
       }
       p.smcRegisterClient(name: name) { success, message in
         once.tryResume {
-          if success { continuation.resume() }
-          else { continuation.resume(throwing: SMCXPCError(message)) }
+          if success { continuation.resume() } else { continuation.resume(throwing: SMCXPCError(message)) }
         }
       }
     }
@@ -493,8 +492,7 @@ public final class SMCFanXPCClient: @unchecked Sendable {
       }
       block(p) { success, value, error in
         once.tryResume {
-          if success { continuation.resume(returning: value) }
-          else { continuation.resume(throwing: SMCXPCError(error)) }
+          if success { continuation.resume(returning: value) } else { continuation.resume(throwing: SMCXPCError(error)) }
         }
       }
     }
@@ -534,8 +532,7 @@ public final class SMCFanXPCClient: @unchecked Sendable {
       }
       block(p) { success, error in
         once.tryResume {
-          if success { continuation.resume() }
-          else { continuation.resume(throwing: SMCXPCError(error)) }
+          if success { continuation.resume() } else { continuation.resume(throwing: SMCXPCError(error)) }
         }
       }
     }

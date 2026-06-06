@@ -131,8 +131,7 @@ public final class FanArbitrator: @unchecked Sendable {
     if let state = existing,
        state.clientID != clientID,
        now.timeIntervalSince(state.lastWriteAt) < self.ownerTTL,
-       priority < state.priority
-    {
+       priority < state.priority {
       self.lock.unlock()
       return .rejected(ownerName: state.clientName, ownerPriority: state.priority)
     }
@@ -151,7 +150,7 @@ public final class FanArbitrator: @unchecked Sendable {
   /// are not included. Sorted by fan index.
   public func getOwnershipSnapshot(now: Date = Date()) -> [FanOwnershipSnapshotRow] {
     self.lock.lock()
-    let snapshot = self.fanOwners.map { (fan, state) in
+    let snapshot = self.fanOwners.map { fan, state in
       FanOwnershipSnapshotRow(
         fanIndex: fan,
         clientName: state.clientName,

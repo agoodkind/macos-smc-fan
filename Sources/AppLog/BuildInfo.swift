@@ -12,9 +12,9 @@ import CryptoKit
 import Foundation
 
 public enum BuildInfo {
-    public nonisolated(unsafe) static var commit = "unknown"
-    public nonisolated(unsafe) static var version = "dev"
-    public nonisolated(unsafe) static var dirty = "false"
+    nonisolated(unsafe) public static var commit = "unknown"
+    nonisolated(unsafe) public static var version = "dev"
+    nonisolated(unsafe) public static var dirty = "false"
 
     public static func buildHash() -> String {
         guard let exe = Bundle.main.executableURL,

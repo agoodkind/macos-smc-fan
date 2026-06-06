@@ -100,7 +100,7 @@ class SMCFanHelper: NSObject, NSXPCListenerDelegate, SMCFanHelperProtocol, @unch
     func smcReadKey(_ key: String, reply: @escaping (Bool, Float, String?) -> Void) {
         do {
             try ensureConnected()
-            guard let fanController = fanController else {
+            guard let fanController else {
                 reply(false, 0, "Connection not established")
                 return
             }
@@ -117,7 +117,7 @@ class SMCFanHelper: NSObject, NSXPCListenerDelegate, SMCFanHelperProtocol, @unch
     func smcWriteKey(_ key: String, value: Float, reply: @escaping (Bool, String?) -> Void) {
         do {
             try ensureConnected()
-            guard let fanController = fanController else {
+            guard let fanController else {
                 reply(false, "Connection not established")
                 return
             }
@@ -135,7 +135,7 @@ class SMCFanHelper: NSObject, NSXPCListenerDelegate, SMCFanHelperProtocol, @unch
     func smcGetFanCount(reply: @escaping (Bool, UInt, String?) -> Void) {
         do {
             try ensureConnected()
-            guard let fanController = fanController else {
+            guard let fanController else {
                 reply(false, 0, "Connection not established")
                 return
             }
@@ -163,7 +163,7 @@ class SMCFanHelper: NSObject, NSXPCListenerDelegate, SMCFanHelperProtocol, @unch
 
             let manualMode: Bool
             do {
-                guard let fanController = fanController else { throw SMCError.notOpen }
+                guard let fanController else { throw SMCError.notOpen }
                 let modeKey = SMCFanKey.key(fanController.config.modeKeyFormat, fan: Int(fanIndex))
                 let (modeValue, _) = try fanController.connection.readKey(modeKey)
                 manualMode = modeValue[0] == 1
@@ -182,7 +182,7 @@ class SMCFanHelper: NSObject, NSXPCListenerDelegate, SMCFanHelperProtocol, @unch
 
     private func readFloat(fanIndex: UInt, keyFormat: String) -> Float? {
         let key = SMCFanKey.key(keyFormat, fan: Int(fanIndex))
-        guard let fanController = fanController else { return nil }
+        guard let fanController else { return nil }
         do {
             let (value, size) = try fanController.connection.readKey(key)
             return SMCDataFormat.float(from: value, size: size)
@@ -225,7 +225,7 @@ class SMCFanHelper: NSObject, NSXPCListenerDelegate, SMCFanHelperProtocol, @unch
             return
         }
 
-        guard let fanController = fanController else {
+        guard let fanController else {
             reply(false, false, "Connection not established")
             return
         }
@@ -354,7 +354,7 @@ class SMCFanHelper: NSObject, NSXPCListenerDelegate, SMCFanHelperProtocol, @unch
             return
         }
 
-        guard let fanController = fanController else {
+        guard let fanController else {
             reply(false, false, "Connection not established")
             return
         }
