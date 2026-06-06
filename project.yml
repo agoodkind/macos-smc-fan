@@ -58,9 +58,7 @@ targets:
         PRODUCT_NAME: SMCFanHelper
         EXECUTABLE_NAME: SMCFanInstaller
         INFOPLIST_FILE: $(DERIVED_FILE_DIR)/Generated/App-Info.plist
-        CODE_SIGN_STYLE: Manual
-        CODE_SIGN_IDENTITY: $(CODE_SIGN_IDENTITY)
-        DEVELOPMENT_TEAM: $(DEVELOPMENT_TEAM)
+        # Signing identity/team/style owned by swift-mk's XCODE_XCCONFIG_FILE override.
     postCompileScripts:
       - script: |
           HELPER_NAME="${HELPER_BUNDLE_ID}"
@@ -103,9 +101,7 @@ targets:
       base:
         PRODUCT_NAME: $(HELPER_BUNDLE_ID)
         PRODUCT_BUNDLE_IDENTIFIER: $(HELPER_BUNDLE_ID)
-        CODE_SIGN_STYLE: Manual
-        CODE_SIGN_IDENTITY: $(CODE_SIGN_IDENTITY)
-        DEVELOPMENT_TEAM: $(DEVELOPMENT_TEAM)
+        # Signing identity/team/style owned by swift-mk's XCODE_XCCONFIG_FILE override.
         ENABLE_HARDENED_RUNTIME: true
         SKIP_INSTALL: true
         OTHER_LDFLAGS:
@@ -140,7 +136,5 @@ targets:
     settings:
       base:
         PRODUCT_NAME: smcfan
-        CODE_SIGN_STYLE: Manual
-        CODE_SIGN_IDENTITY: $(CODE_SIGN_IDENTITY)
-        DEVELOPMENT_TEAM: $(DEVELOPMENT_TEAM)
+        # Signing identity/team/style owned by swift-mk's XCODE_XCCONFIG_FILE override.
         SKIP_INSTALL: true
