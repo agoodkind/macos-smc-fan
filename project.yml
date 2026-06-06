@@ -119,20 +119,21 @@ targets:
     platform: macOS
     templates:
       - CommonConfig
+    # CLI only. Common (the SMCFanProtocol module) and its Config come in through the
+    # SMCFanProtocol dependency, matching Package.swift. Inlining Sources/Common here
+    # would compile SMCFanProtocol's types a second time and clash with the copies
+    # SMCFanXPCClient links, so the CLI depends on the modules instead.
     sources:
       - path: Sources/CLI
-      - path: Sources/Common
-        excludes:
-          - "Config.generated.swift"
-      - path: "${DERIVED_FILE_DIR}/Generated/Config.generated.swift"
-        optional: true
-        buildPhase: sources
-        type: file
     dependencies:
       - package: SMCFan
         product: SMCFanKit
       - package: SMCFan
         product: AppLog
+      - package: SMCFan
+        product: SMCFanProtocol
+      - package: SMCFan
+        product: SMCFanXPCClient
     settings:
       base:
         PRODUCT_NAME: smcfan
