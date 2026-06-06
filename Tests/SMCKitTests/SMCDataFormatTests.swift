@@ -1,5 +1,5 @@
 //
-//  SMCKitTests.swift
+//  SMCDataFormatTests.swift
 //  SMCKitTests
 //
 //  Created by Alex Goodkind <alex@goodkind.io> on 2026-01-18.

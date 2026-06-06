@@ -1,5 +1,5 @@
 //
-//  FanKeys.swift
+//  SMCFanKey.swift
 //  SMCFanKit
 //
 //  Created by Alex Goodkind <alex@goodkind.io> on 2026-04-14.

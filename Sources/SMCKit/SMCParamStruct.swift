@@ -1,5 +1,5 @@
 //
-//  SMCTypes.swift
+//  SMCParamStruct.swift
 //  SMCKit
 //
 //  Created by Alex Goodkind <alex@goodkind.io> on 2026-01-24.

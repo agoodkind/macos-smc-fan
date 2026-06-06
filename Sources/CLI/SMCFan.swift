@@ -1,5 +1,5 @@
 //
-//  SMCFanApp.swift
+//  SMCFan.swift
 //  SMCFan
 //
 //  Created by Alex Goodkind <alex@goodkind.io> on 2026-01-18.

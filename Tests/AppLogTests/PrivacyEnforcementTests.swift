@@ -24,7 +24,7 @@ func shouldNotCompile() {
 #endif
 
 @Suite("AppLog")
-struct AppLogTests {
+struct PrivacyEnforcementTests {
     @Test("bootstrap is idempotent")
     func bootstrapIdempotent() {
         AppLog.bootstrap(subsystem: "io.goodkind.fan.test")
