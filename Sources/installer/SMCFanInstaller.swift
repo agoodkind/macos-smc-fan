@@ -14,7 +14,7 @@ import ServiceManagement
 private let log = AppLog.make(category: "Installer")
 
 @main
-struct SMCFanInstaller {
+enum SMCFanInstaller {
     static func main() {
         AppLog.bootstrap(subsystem: "io.goodkind.fan")
         BuildInfo.commit = generatedGitCommit

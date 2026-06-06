@@ -10,7 +10,7 @@ import AppLog
 import Foundation
 
 @main
-struct SMCFanHelperMain {
+enum SMCFanHelperMain {
     static func main() {
         AppLog.bootstrap(subsystem: "io.goodkind.fan")
         BuildInfo.commit = generatedGitCommit

@@ -27,11 +27,9 @@ public struct SMCHardwareConfig {
         self.modeKeyFormat = modeKeyFormat
         self.ftstAvailable = ftstAvailable
     }
-}
 
-// MARK: - Hardware Detection
+    // MARK: - Hardware Detection
 
-extension SMCHardwareConfig {
     /// Detect hardware-specific SMC key configuration by probing the connection.
     public static func detectHardwareKeys(connection: SMCConnection) -> SMCHardwareConfig {
         var modeKey = SMCFanKey.modeLower

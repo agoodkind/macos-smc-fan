@@ -52,7 +52,7 @@ func parseCLI(_ argv: [String]) -> CLIInvocation {
 }
 
 @main
-struct SMCFan {
+enum SMCFan {
   static func main() async {
     AppLog.bootstrap(subsystem: "io.goodkind.fan")
     BuildInfo.commit = generatedGitCommit
@@ -93,7 +93,7 @@ struct SMCFan {
 
       case "keys":
         let filter = inv.positional.first
-        try await Commands.keys(filter: filter, priority: inv.priority)
+        try await Commands.keys(priority: inv.priority, filter: filter)
 
       case "sensors":
         try await Commands.sensors(priority: inv.priority)

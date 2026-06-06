@@ -11,7 +11,7 @@ import Security
 import ServiceManagement
 
 /// Handles macOS authorization for privileged operations
-struct Authorization {
+enum Authorization {
 
   /// Request authorization to install privileged helper
   static func requestInstallRights() throws -> AuthorizationRef {

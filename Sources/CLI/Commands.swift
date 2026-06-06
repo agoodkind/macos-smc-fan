@@ -108,7 +108,7 @@ enum Commands {
     CLIOut.print("\(key) = \(value)")
   }
 
-  static func keys(filter: String? = nil, priority: Int) async throws {
+  static func keys(priority: Int, filter: String? = nil) async throws {
     let client = makeClient(priority: priority)
     try await client.open()
     let allKeys = await client.enumerateKeys()
