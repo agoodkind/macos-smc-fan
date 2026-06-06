@@ -1101,7 +1101,7 @@ final class IntegrationTests: XCTestCase {
     tryRun()
   }
 
-  private func runCLIInternal(_ args: [String], completion: @escaping (String, Int32) -> Void) {
+  private func runCLIInternal(_ args: [String], completion: (String, Int32) -> Void) {
     let cmdStr = "smcfan \(args.joined(separator: " "))"
     fputs("[cli] \(cmdStr)\n", stderr)
     fflush(stderr)
