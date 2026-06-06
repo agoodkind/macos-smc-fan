@@ -7,6 +7,7 @@
 //
 
 import Foundation
+import Nimble
 import XCTest
 
 /// Integration tests that require the helper daemon to be installed and running
@@ -71,7 +72,7 @@ final class IntegrationTests: XCTestCase {
     // Probe individual keys to detect casing and availability.
     // This catches the F0Md vs F0md issue without using the `keys` enumeration command.
     let fnumResult = runCLISync(["read", "FNum"])
-    XCTAssertEqual(fnumResult.exitCode, 0, "FNum key must exist")
+    expect(fnumResult.exitCode).to(equal(0), description: "FNum key must exist")
 
     // Check which mode key variant exists
     let lowerResult = runCLISync(["read", "F0md"])
@@ -80,23 +81,23 @@ final class IntegrationTests: XCTestCase {
     let hasUpperMode = upperResult.exitCode == 0
 
     fputs("[test] Mode key: F0md=\(hasLowerMode) F0Md=\(hasUpperMode)\n", stderr)
-    XCTAssertTrue(
-      hasLowerMode || hasUpperMode, "Neither F0md nor F0Md found. Fan mode key missing from SMC.")
+    expect(hasLowerMode || hasUpperMode).to(
+      beTrue(), description: "Neither F0md nor F0Md found. Fan mode key missing from SMC.")
 
     // Verify against hardware expectations
     if hw.modeKeyFormat == "F%dmd" {
-      XCTAssertTrue(hasLowerMode, "[\(hw.chipName)] Expected lowercase mode key")
+      expect(hasLowerMode).to(beTrue(), description: "[\(hw.chipName)] Expected lowercase mode key")
     } else {
-      XCTAssertTrue(hasUpperMode, "[\(hw.chipName)] Expected uppercase mode key")
+      expect(hasUpperMode).to(beTrue(), description: "[\(hw.chipName)] Expected uppercase mode key")
     }
 
     // Check Ftst: fetchKeyInfo throws on notFound, so read exits non-zero when key absent
     let ftstResult = runCLISync(["read", "Ftst"])
     let hasFtst = ftstResult.exitCode == 0
     fputs("[test] Ftst available: \(hasFtst) (exitCode=\(ftstResult.exitCode))\n", stderr)
-    XCTAssertEqual(
-      hasFtst, hw.ftstPresent,
-      "[\(hw.chipName)] Ftst expectation mismatch: expected=\(hw.ftstPresent) actual=\(hasFtst)")
+    expect(hasFtst).to(
+      equal(hw.ftstPresent),
+      description: "[\(hw.chipName)] Ftst expectation mismatch: expected=\(hw.ftstPresent) actual=\(hasFtst)")
 
     fputs("[test] === Hardware Config ===\n", stderr)
     fputs(
@@ -114,18 +115,18 @@ final class IntegrationTests: XCTestCase {
 
     for key in expectedKeys {
       let result = runCLISync(["read", key])
-      XCTAssertEqual(
-        result.exitCode, 0,
-        "readKeyInfo(\(key)) failed. exit=\(result.exitCode) output=\(result.output)")
+      expect(result.exitCode).to(
+        equal(0),
+        description: "readKeyInfo(\(key)) failed. exit=\(result.exitCode) output=\(result.output)")
     }
 
     // Mode key: try both casings, at least one must work
     let lowerResult = runCLISync(["read", "F0md"])
     let upperResult = runCLISync(["read", "F0Md"])
     let modeReadable = lowerResult.exitCode == 0 || upperResult.exitCode == 0
-    XCTAssertTrue(
-      modeReadable,
-      "Neither F0md nor F0Md readable. Lower: exit=\(lowerResult.exitCode) [\(lowerResult.output.trimmingCharacters(in: .whitespacesAndNewlines))], Upper: exit=\(upperResult.exitCode) [\(upperResult.output.trimmingCharacters(in: .whitespacesAndNewlines))]"
+    expect(modeReadable).to(
+      beTrue(),
+      description: "Neither F0md nor F0Md readable. Lower: exit=\(lowerResult.exitCode) [\(lowerResult.output.trimmingCharacters(in: .whitespacesAndNewlines))], Upper: exit=\(upperResult.exitCode) [\(upperResult.output.trimmingCharacters(in: .whitespacesAndNewlines))]"
     )
   }
 
@@ -133,7 +134,7 @@ final class IntegrationTests: XCTestCase {
     // Verify the helper logs hardware detection on startup.
     // The helper output should contain detection results.
     let result = runCLISync(["list"])
-    XCTAssertEqual(result.exitCode, 0, "list command failed")
+    expect(result.exitCode).to(equal(0), description: "list command failed")
 
     // Check that hardware detection ran and reported
     let output = result.output
@@ -145,9 +146,9 @@ final class IntegrationTests: XCTestCase {
     }
 
     // The list output itself validates that reads work
-    XCTAssertTrue(output.contains("Fans:"), "list should show fan count")
-    XCTAssertTrue(output.contains("Min:"), "list should show min RPM")
-    XCTAssertTrue(output.contains("Max:"), "list should show max RPM")
+    expect(output.contains("Fans:")).to(beTrue(), description: "list should show fan count")
+    expect(output.contains("Min:")).to(beTrue(), description: "list should show min RPM")
+    expect(output.contains("Max:")).to(beTrue(), description: "list should show max RPM")
   }
 
   // MARK: - XPC Connection Tests
@@ -163,7 +164,7 @@ final class IntegrationTests: XCTestCase {
     connection.resume()
 
     // Connection should not be nil
-    XCTAssertNotNil(connection)
+    expect(connection) != nil
 
     connection.invalidate()
   }
@@ -175,7 +176,7 @@ final class IntegrationTests: XCTestCase {
     var fanCount: UInt = 0
 
     runCLI(["list"]) { output, exitCode in
-      XCTAssertEqual(exitCode, 0, "CLI should exit with 0")
+      expect(exitCode).to(equal(0), description: "CLI should exit with 0")
 
       // Parse "Fans: X" from output
       if let match = output.range(of: "Fans: (\\d+)", options: .regularExpression) {
@@ -183,8 +184,8 @@ final class IntegrationTests: XCTestCase {
         fanCount = UInt(numberStr) ?? 0
       }
 
-      XCTAssertGreaterThan(fanCount, 0, "Should have at least 1 fan")
-      XCTAssertLessThanOrEqual(fanCount, 4, "Should have at most 4 fans")
+      expect(fanCount).to(beGreaterThan(0), description: "Should have at least 1 fan")
+      expect(fanCount).to(beLessThanOrEqualTo(4), description: "Should have at most 4 fans")
       expectation.fulfill()
     }
 
@@ -195,12 +196,12 @@ final class IntegrationTests: XCTestCase {
     let expectation = XCTestExpectation(description: "Read fan info")
 
     runCLI(["list"]) { output, exitCode in
-      XCTAssertEqual(exitCode, 0)
+      expect(exitCode) == 0
 
       // Should contain RPM info
-      XCTAssertTrue(output.contains("RPM"), "Output should contain RPM values")
-      XCTAssertTrue(output.contains("Min:"), "Output should contain min RPM")
-      XCTAssertTrue(output.contains("Max:"), "Output should contain max RPM")
+      expect(output.contains("RPM")).to(beTrue(), description: "Output should contain RPM values")
+      expect(output.contains("Min:")).to(beTrue(), description: "Output should contain min RPM")
+      expect(output.contains("Max:")).to(beTrue(), description: "Output should contain max RPM")
 
       expectation.fulfill()
     }
@@ -214,8 +215,8 @@ final class IntegrationTests: XCTestCase {
     let expectation = XCTestExpectation(description: "Set fan RPM")
 
     runCLISet(["set", "0", "4000"]) { output, exitCode in
-      XCTAssertEqual(exitCode, 0, "Set command should succeed")
-      XCTAssertTrue(output.contains("Set fan 0"), "Should confirm fan was set")
+      expect(exitCode).to(equal(0), description: "Set command should succeed")
+      expect(output.contains("Set fan 0")).to(beTrue(), description: "Should confirm fan was set")
       expectation.fulfill()
     }
 
@@ -228,8 +229,8 @@ final class IntegrationTests: XCTestCase {
     Thread.sleep(forTimeInterval: 2.0)
 
     runCLI(["list"]) { output, exitCode in
-      XCTAssertEqual(exitCode, 0)
-      XCTAssertTrue(output.contains("Target: 4000"), "Target should be 4000 RPM")
+      expect(exitCode) == 0
+      expect(output.contains("Target: 4000")).to(beTrue(), description: "Target should be 4000 RPM")
       verifyExpectation.fulfill()
     }
 
@@ -239,14 +240,14 @@ final class IntegrationTests: XCTestCase {
   /// Exercises the same condition as SMCFanHelper.verifyFanSpeed: actual RPM
   /// reaches target within 10% within 30s after set.
   func testFanSpeedVerification_ActualReachesTargetWithinTolerance() throws {
-    let targetRPM: Float = 4000
+    let targetRPM: Float = 4_000
     let tolerance: Float = 0.10
     let timeout: TimeInterval = 30.0
     let interval: TimeInterval = 2.0
 
     let setExpectation = XCTestExpectation(description: "Set fan RPM")
     runCLISet(["set", "0", String(Int(targetRPM))]) { _, exitCode in
-      XCTAssertEqual(exitCode, 0, "Set command should succeed")
+      expect(exitCode).to(equal(0), description: "Set command should succeed")
       setExpectation.fulfill()
     }
     wait(for: [setExpectation], timeout: 15.0)
@@ -285,8 +286,8 @@ final class IntegrationTests: XCTestCase {
     let expectation = XCTestExpectation(description: "Set fan auto")
 
     runCLI(["auto", "0"]) { output, exitCode in
-      XCTAssertEqual(exitCode, 0, "Auto command should succeed")
-      XCTAssertTrue(output.contains("auto mode"), "Should confirm auto mode")
+      expect(exitCode).to(equal(0), description: "Auto command should succeed")
+      expect(output.contains("auto mode")).to(beTrue(), description: "Should confirm auto mode")
       expectation.fulfill()
     }
 
@@ -300,7 +301,7 @@ final class IntegrationTests: XCTestCase {
     let initialExpectation = XCTestExpectation(description: "Initial state")
     runCLI(["list"]) { output, _ in
       // Just verify we can read
-      XCTAssertTrue(output.contains("Fan 0:"))
+      expect(output.contains("Fan 0:")) == true
       initialExpectation.fulfill()
     }
     wait(for: [initialExpectation], timeout: 10.0)
@@ -308,7 +309,7 @@ final class IntegrationTests: XCTestCase {
     // 2. Set to high RPM
     let setExpectation = XCTestExpectation(description: "Set high")
     runCLISet(["set", "0", "5500"]) { _, exitCode in
-      XCTAssertEqual(exitCode, 0)
+      expect(exitCode) == 0
       setExpectation.fulfill()
     }
     wait(for: [setExpectation], timeout: 15.0)
@@ -318,7 +319,7 @@ final class IntegrationTests: XCTestCase {
 
     let verifyExpectation = XCTestExpectation(description: "Verify high")
     runCLI(["list"]) { output, _ in
-      XCTAssertTrue(output.contains("Target: 5500"))
+      expect(output.contains("Target: 5500")) == true
       verifyExpectation.fulfill()
     }
     wait(for: [verifyExpectation], timeout: 10.0)
@@ -326,7 +327,7 @@ final class IntegrationTests: XCTestCase {
     // 4. Reset to auto
     let resetExpectation = XCTestExpectation(description: "Reset")
     runCLI(["auto", "0"]) { _, exitCode in
-      XCTAssertEqual(exitCode, 0)
+      expect(exitCode) == 0
       resetExpectation.fulfill()
     }
     wait(for: [resetExpectation], timeout: 15.0)
@@ -344,14 +345,14 @@ final class IntegrationTests: XCTestCase {
     let initialExpectation = XCTestExpectation(description: "Initial state")
     runCLI(["list"]) { output, _ in
       // Verify Fan 0 exists and is in Auto mode
-      XCTAssertTrue(output.contains("Fan 0:"), "Should have Fan 0")
+      expect(output.contains("Fan 0:")).to(beTrue(), description: "Should have Fan 0")
       initialExpectation.fulfill()
     }
     wait(for: [initialExpectation], timeout: 10.0)
 
     let setExpectation = XCTestExpectation(description: "Set Fan 1")
     runCLISet(["set", "1", "5000"]) { _, exitCode in
-      XCTAssertEqual(exitCode, 0)
+      expect(exitCode) == 0
       setExpectation.fulfill()
     }
     wait(for: [setExpectation], timeout: 15.0)
@@ -364,17 +365,17 @@ final class IntegrationTests: XCTestCase {
       let lines = output.components(separatedBy: "\n")
       for line in lines {
         if line.contains("Fan 0:") {
-          XCTAssertTrue(
-            line.contains("Mode: Auto"),
-            "Fan 0 should remain in Auto mode when Fan 1 is set")
+          expect(line.contains("Mode: Auto")).to(
+            beTrue(),
+            description: "Fan 0 should remain in Auto mode when Fan 1 is set")
         }
         if line.contains("Fan 1:") {
-          XCTAssertTrue(
-            line.contains("Mode: Manual"),
-            "Fan 1 should be in Manual mode")
-          XCTAssertTrue(
-            line.contains("Target: 5000"),
-            "Fan 1 should have target 5000")
+          expect(line.contains("Mode: Manual")).to(
+            beTrue(),
+            description: "Fan 1 should be in Manual mode")
+          expect(line.contains("Target: 5000")).to(
+            beTrue(),
+            description: "Fan 1 should have target 5000")
         }
       }
       verifyExpectation.fulfill()
@@ -388,14 +389,14 @@ final class IntegrationTests: XCTestCase {
   func testIndependentFanControl_BothFansManualDifferentSpeeds() throws {
     let set0Expectation = XCTestExpectation(description: "Set Fan 0")
     runCLISet(["set", "0", "4000"]) { _, exitCode in
-      XCTAssertEqual(exitCode, 0)
+      expect(exitCode) == 0
       set0Expectation.fulfill()
     }
     wait(for: [set0Expectation], timeout: 15.0)
 
     let set1Expectation = XCTestExpectation(description: "Set Fan 1")
     runCLISet(["set", "1", "6000"]) { _, exitCode in
-      XCTAssertEqual(exitCode, 0)
+      expect(exitCode) == 0
       set1Expectation.fulfill()
     }
     wait(for: [set1Expectation], timeout: 15.0)
@@ -407,20 +408,20 @@ final class IntegrationTests: XCTestCase {
       let lines = output.components(separatedBy: "\n")
       for line in lines {
         if line.contains("Fan 0:") {
-          XCTAssertTrue(
-            line.contains("Target: 4000"),
-            "Fan 0 should have target 4000")
-          XCTAssertTrue(
-            line.contains("Mode: Manual"),
-            "Fan 0 should be Manual")
+          expect(line.contains("Target: 4000")).to(
+            beTrue(),
+            description: "Fan 0 should have target 4000")
+          expect(line.contains("Mode: Manual")).to(
+            beTrue(),
+            description: "Fan 0 should be Manual")
         }
         if line.contains("Fan 1:") {
-          XCTAssertTrue(
-            line.contains("Target: 6000"),
-            "Fan 1 should have target 6000")
-          XCTAssertTrue(
-            line.contains("Mode: Manual"),
-            "Fan 1 should be Manual")
+          expect(line.contains("Target: 6000")).to(
+            beTrue(),
+            description: "Fan 1 should have target 6000")
+          expect(line.contains("Mode: Manual")).to(
+            beTrue(),
+            description: "Fan 1 should be Manual")
         }
       }
       verifyExpectation.fulfill()
@@ -440,7 +441,7 @@ final class IntegrationTests: XCTestCase {
     // Set Fan 1 to auto, Fan 0 stays manual
     let autoExpectation = XCTestExpectation(description: "Set Fan 1 auto")
     runCLI(["auto", "1"]) { _, exitCode in
-      XCTAssertEqual(exitCode, 0)
+      expect(exitCode) == 0
       autoExpectation.fulfill()
     }
     wait(for: [autoExpectation], timeout: 15.0)
@@ -452,14 +453,14 @@ final class IntegrationTests: XCTestCase {
       let lines = output.components(separatedBy: "\n")
       for line in lines {
         if line.contains("Fan 0:") {
-          XCTAssertTrue(
-            line.contains("Mode: Manual"),
-            "Fan 0 should still be Manual")
+          expect(line.contains("Mode: Manual")).to(
+            beTrue(),
+            description: "Fan 0 should still be Manual")
         }
         if line.contains("Fan 1:") {
-          XCTAssertTrue(
-            line.contains("Mode: Auto"),
-            "Fan 1 should be Auto")
+          expect(line.contains("Mode: Auto")).to(
+            beTrue(),
+            description: "Fan 1 should be Auto")
         }
       }
       verifyExpectation.fulfill()
@@ -477,7 +478,7 @@ final class IntegrationTests: XCTestCase {
     // Set back to auto
     let autoExpectation = XCTestExpectation(description: "Set auto")
     runCLI(["auto", "0"]) { _, exitCode in
-      XCTAssertEqual(exitCode, 0)
+      expect(exitCode) == 0
       autoExpectation.fulfill()
     }
     wait(for: [autoExpectation], timeout: 15.0)
@@ -488,24 +489,24 @@ final class IntegrationTests: XCTestCase {
     // Verify fans are in auto mode. Target depends on thermal state and hardware.
     let verifyExpectation = XCTestExpectation(description: "Verify system mode")
     runCLI(["list"]) { [hw] output, _ in
-      XCTAssertTrue(
-        output.contains("Mode: Auto"),
-        "Fans should be in Auto mode")
+      expect(output.contains("Mode: Auto")).to(
+        beTrue(),
+        description: "Fans should be in Auto mode")
       switch hw!.autoModeTarget {
       case .zero:
-        XCTAssertTrue(
-          output.contains("Target: 0"),
-          "[\(hw!.chipName)] Target should be 0 (system control)")
+        expect(output.contains("Target: 0")).to(
+          beTrue(),
+          description: "[\(hw!.chipName)] Target should be 0 (system control)")
       case .minRPM:
-        XCTAssertTrue(
-          output.contains("Target: \(hw!.reportedMinRPM)"),
-          "[\(hw!.chipName)] Target should be \(hw!.reportedMinRPM) (thermalmonitord)")
+        expect(output.contains("Target: \(hw!.reportedMinRPM)")).to(
+          beTrue(),
+          description: "[\(hw!.chipName)] Target should be \(hw!.reportedMinRPM) (thermalmonitord)")
       case .zeroOrMinRPM:
         let hasZero = output.contains("Target: 0")
         let hasMin = output.contains("Target: \(hw!.reportedMinRPM)")
-        XCTAssertTrue(
-          hasZero || hasMin,
-          "[\(hw!.chipName)] Target should be 0 or \(hw!.reportedMinRPM)")
+        expect(hasZero || hasMin).to(
+          beTrue(),
+          description: "[\(hw!.chipName)] Target should be 0 or \(hw!.reportedMinRPM)")
       }
       verifyExpectation.fulfill()
     }
@@ -518,7 +519,7 @@ final class IntegrationTests: XCTestCase {
     // Setting 0 RPM should stop the fan completely while keeping manual mode
     let setExpectation = XCTestExpectation(description: "Set 0 RPM")
     runCLISet(["set", "0", "0"]) { _, exitCode in
-      XCTAssertEqual(exitCode, 0)
+      expect(exitCode) == 0
       setExpectation.fulfill()
     }
     wait(for: [setExpectation], timeout: 15.0)
@@ -528,15 +529,15 @@ final class IntegrationTests: XCTestCase {
     runCLI(["list"]) { output, _ in
       let lines = output.components(separatedBy: "\n")
       for line in lines where line.contains("Fan 0:") {
-        XCTAssertTrue(line.contains("Target: 0"), "Target should be 0")
-        XCTAssertTrue(line.contains("Mode: Manual"), "Mode should be Manual")
+        expect(line.contains("Target: 0")).to(beTrue(), description: "Target should be 0")
+        expect(line.contains("Mode: Manual")).to(beTrue(), description: "Mode should be Manual")
         // RPM should be 0 or very close
         if let match = line.range(of: "Fan 0: (\\d+) RPM", options: .regularExpression) {
           let rpmStr = String(line[match]).replacingOccurrences(
             of: "Fan 0: ", with: ""
           ).replacingOccurrences(of: " RPM", with: "")
           if let rpm = Int(rpmStr) {
-            XCTAssertLessThanOrEqual(rpm, 250, "RPM should be 0 or near 0")
+            expect(rpm).to(beLessThanOrEqualTo(250), description: "RPM should be 0 or near 0")
           }
         }
       }
@@ -553,7 +554,7 @@ final class IntegrationTests: XCTestCase {
   func testSetBelowMinRPM_Works() throws {
     let setExpectation = XCTestExpectation(description: "Set below min")
     runCLISet(["set", "0", "1000"]) { _, exitCode in
-      XCTAssertEqual(exitCode, 0)
+      expect(exitCode) == 0
       setExpectation.fulfill()
     }
     wait(for: [setExpectation], timeout: 15.0)
@@ -565,22 +566,22 @@ final class IntegrationTests: XCTestCase {
       for line in lines where line.contains("Fan 0:") {
         switch hw!.belowMinBehavior {
         case .preserved:
-          XCTAssertTrue(
-            line.contains("Target: 1000"),
-            "[\(hw!.chipName)] Target should be preserved as 1000")
+          expect(line.contains("Target: 1000")).to(
+            beTrue(),
+            description: "[\(hw!.chipName)] Target should be preserved as 1000")
         case .clampedToMin:
-          XCTAssertTrue(
-            line.contains("Target: \(hw!.reportedMinRPM)"),
-            "[\(hw!.chipName)] Target should be clamped to min (\(hw!.reportedMinRPM))")
+          expect(line.contains("Target: \(hw!.reportedMinRPM)")).to(
+            beTrue(),
+            description: "[\(hw!.chipName)] Target should be clamped to min (\(hw!.reportedMinRPM))")
         }
         if let match = line.range(of: "Fan 0: (\\d+) RPM", options: .regularExpression) {
           let rpmStr = String(line[match]).replacingOccurrences(
             of: "Fan 0: ", with: ""
           ).replacingOccurrences(of: " RPM", with: "")
           if let rpm = Int(rpmStr) {
-            XCTAssertLessThanOrEqual(
-              rpm, hw!.reportedMinRPM + hw!.rpmTolerance,
-              "[\(hw!.chipName)] RPM should be at or below hardware min")
+            expect(rpm).to(
+              beLessThanOrEqualTo(hw!.reportedMinRPM + hw!.rpmTolerance),
+              description: "[\(hw!.chipName)] RPM should be at or below hardware min")
           }
         }
       }
@@ -596,7 +597,7 @@ final class IntegrationTests: XCTestCase {
   func testSetAboveMaxRPM_ClampedToHardwareMax() throws {
     let setExpectation = XCTestExpectation(description: "Set above max")
     runCLISet(["set", "0", "10000"]) { _, exitCode in
-      XCTAssertEqual(exitCode, 0)
+      expect(exitCode) == 0
       setExpectation.fulfill()
     }
     wait(for: [setExpectation], timeout: 15.0)
@@ -606,14 +607,15 @@ final class IntegrationTests: XCTestCase {
     runCLI(["list"]) { [hw] output, _ in
       let lines = output.components(separatedBy: "\n")
       for line in lines where line.contains("Fan 0:") {
-        XCTAssertTrue(line.contains("Target: 10000"), "Target should be 10000")
+        expect(line.contains("Target: 10000")).to(beTrue(), description: "Target should be 10000")
         if let match = line.range(of: "Fan 0: (\\d+) RPM", options: .regularExpression) {
           let rpmStr = String(line[match]).replacingOccurrences(
             of: "Fan 0: ", with: ""
           ).replacingOccurrences(of: " RPM", with: "")
           if let rpm = Int(rpmStr) {
-            XCTAssertGreaterThan(rpm, hw!.reportedMinRPM,
-              "[\(hw!.chipName)] RPM should reflect manual target or clamp")
+            expect(rpm).to(
+              beGreaterThan(hw!.reportedMinRPM),
+              description: "[\(hw!.chipName)] RPM should reflect manual target or clamp")
           }
         }
       }
@@ -651,7 +653,7 @@ final class IntegrationTests: XCTestCase {
 
     let setExpectation = XCTestExpectation(description: "Set Fan 0")
     runCLISet(["set", "0", "5000"]) { _, exitCode in
-      XCTAssertEqual(exitCode, 0)
+      expect(exitCode) == 0
       setExpectation.fulfill()
     }
     wait(for: [setExpectation], timeout: 15.0)
@@ -661,15 +663,16 @@ final class IntegrationTests: XCTestCase {
     runCLI(["list"]) { output, _ in
       let lines = output.components(separatedBy: "\n")
       for line in lines where line.contains("Fan 1:") {
-        XCTAssertTrue(line.contains("Mode: Auto"), "Fan 1 should be Auto")
+        expect(line.contains("Mode: Auto")).to(beTrue(), description: "Fan 1 should be Auto")
         if let match = line.range(of: "Fan 1: (\\d+) RPM", options: .regularExpression) {
           let rpmStr = String(line[match]).replacingOccurrences(
             of: "Fan 1: ", with: ""
           ).replacingOccurrences(of: " RPM", with: "")
           if let rpm = Int(rpmStr) {
             if initialFan1RPM == 0 {
-              XCTAssertGreaterThan(rpm, 2000,
-                "Fan 1 should wake to auto min when Ftst is set")
+              expect(rpm).to(
+                beGreaterThan(2_000),
+                description: "Fan 1 should wake to auto min when Ftst is set")
             }
           }
         }
@@ -697,14 +700,14 @@ final class IntegrationTests: XCTestCase {
     let startTime = CFAbsoluteTimeGetCurrent()
 
     runCLISet(["set", "1", "5000"]) { _, exitCode in
-      XCTAssertEqual(exitCode, 0, "Set command should succeed")
+      expect(exitCode).to(equal(0), description: "Set command should succeed")
       expectation.fulfill()
     }
     wait(for: [expectation], timeout: 15.0)
 
     waitForStateStable()
 
-    let transitionTime = (CFAbsoluteTimeGetCurrent() - startTime) * 1000
+    let transitionTime = (CFAbsoluteTimeGetCurrent() - startTime) * 1_000
     print("Transition time (Auto → Manual): \(Int(transitionTime))ms")
 
     // Verify Fan 1 is now in Manual mode
@@ -712,8 +715,8 @@ final class IntegrationTests: XCTestCase {
     runCLI(["list"]) { output, _ in
       let lines = output.components(separatedBy: "\n")
       for line in lines where line.contains("Fan 1:") {
-        XCTAssertTrue(line.contains("Mode: Manual"), "Fan 1 should be Manual")
-        XCTAssertTrue(line.contains("Target: 5000"), "Fan 1 target should be 5000")
+        expect(line.contains("Mode: Manual")).to(beTrue(), description: "Fan 1 should be Manual")
+        expect(line.contains("Target: 5000")).to(beTrue(), description: "Fan 1 target should be 5000")
       }
       verifyExpectation.fulfill()
     }
@@ -731,7 +734,7 @@ final class IntegrationTests: XCTestCase {
 
     let set1Expectation = XCTestExpectation(description: "Set Fan 1")
     runCLISet(["set", "1", "5000"]) { _, exitCode in
-      XCTAssertEqual(exitCode, 0)
+      expect(exitCode) == 0
       set1Expectation.fulfill()
     }
     wait(for: [set1Expectation], timeout: 15.0)
@@ -740,13 +743,13 @@ final class IntegrationTests: XCTestCase {
     let startTime = CFAbsoluteTimeGetCurrent()
     let set0Expectation = XCTestExpectation(description: "Set Fan 0")
     runCLISet(["set", "0", "6000"]) { _, exitCode in
-      XCTAssertEqual(exitCode, 0)
+      expect(exitCode) == 0
       set0Expectation.fulfill()
     }
     wait(for: [set0Expectation], timeout: 15.0)
 
     waitForStateStable()
-    let transitionTime = (CFAbsoluteTimeGetCurrent() - startTime) * 1000
+    let transitionTime = (CFAbsoluteTimeGetCurrent() - startTime) * 1_000
     print("Transition time (Partial → Both Manual): \(Int(transitionTime))ms")
 
     // Verify both fans are in Manual mode with different targets
@@ -755,12 +758,12 @@ final class IntegrationTests: XCTestCase {
       let lines = output.components(separatedBy: "\n")
       for line in lines {
         if line.contains("Fan 0:") {
-          XCTAssertTrue(line.contains("Mode: Manual"), "Fan 0 should be Manual")
-          XCTAssertTrue(line.contains("Target: 6000"), "Fan 0 target should be 6000")
+          expect(line.contains("Mode: Manual")).to(beTrue(), description: "Fan 0 should be Manual")
+          expect(line.contains("Target: 6000")).to(beTrue(), description: "Fan 0 target should be 6000")
         }
         if line.contains("Fan 1:") {
-          XCTAssertTrue(line.contains("Mode: Manual"), "Fan 1 should be Manual")
-          XCTAssertTrue(line.contains("Target: 5000"), "Fan 1 target should be 5000")
+          expect(line.contains("Mode: Manual")).to(beTrue(), description: "Fan 1 should be Manual")
+          expect(line.contains("Target: 5000")).to(beTrue(), description: "Fan 1 target should be 5000")
         }
       }
       verifyExpectation.fulfill()
@@ -781,13 +784,13 @@ final class IntegrationTests: XCTestCase {
     let startTime = CFAbsoluteTimeGetCurrent()
     let autoExpectation = XCTestExpectation(description: "Set Fan 1 auto")
     runCLI(["auto", "1"]) { _, exitCode in
-      XCTAssertEqual(exitCode, 0)
+      expect(exitCode) == 0
       autoExpectation.fulfill()
     }
     wait(for: [autoExpectation], timeout: 15.0)
 
     waitForStateStable()
-    let transitionTime = (CFAbsoluteTimeGetCurrent() - startTime) * 1000
+    let transitionTime = (CFAbsoluteTimeGetCurrent() - startTime) * 1_000
     print("Transition time (Both Manual → Partial Auto): \(Int(transitionTime))ms")
 
     // Verify Fan 0 is Manual, Fan 1 is Auto
@@ -796,10 +799,10 @@ final class IntegrationTests: XCTestCase {
       let lines = output.components(separatedBy: "\n")
       for line in lines {
         if line.contains("Fan 0:") {
-          XCTAssertTrue(line.contains("Mode: Manual"), "Fan 0 should still be Manual")
+          expect(line.contains("Mode: Manual")).to(beTrue(), description: "Fan 0 should still be Manual")
         }
         if line.contains("Fan 1:") {
-          XCTAssertTrue(line.contains("Mode: Auto"), "Fan 1 should be Auto")
+          expect(line.contains("Mode: Auto")).to(beTrue(), description: "Fan 1 should be Auto")
         }
       }
       verifyExpectation.fulfill()
@@ -818,7 +821,7 @@ final class IntegrationTests: XCTestCase {
     let startTime = CFAbsoluteTimeGetCurrent()
     let autoExpectation = XCTestExpectation(description: "Set Fan 0 auto")
     runCLI(["auto", "0"]) { _, exitCode in
-      XCTAssertEqual(exitCode, 0)
+      expect(exitCode) == 0
       autoExpectation.fulfill()
     }
     wait(for: [autoExpectation], timeout: 15.0)
@@ -826,13 +829,13 @@ final class IntegrationTests: XCTestCase {
     // Wait for thermalmonitord to reclaim control
     Thread.sleep(forTimeInterval: 5.0)
 
-    let transitionTime = (CFAbsoluteTimeGetCurrent() - startTime) * 1000
+    let transitionTime = (CFAbsoluteTimeGetCurrent() - startTime) * 1_000
     print("Transition time (Manual → System Mode): \(Int(transitionTime))ms")
 
     // Verify fans are in auto mode
     let verifyExpectation = XCTestExpectation(description: "Verify system mode")
     runCLI(["list"]) { output, _ in
-      XCTAssertTrue(output.contains("Mode: Auto"), "Fans should be in Auto mode")
+      expect(output.contains("Mode: Auto")).to(beTrue(), description: "Fans should be in Auto mode")
       verifyExpectation.fulfill()
     }
     wait(for: [verifyExpectation], timeout: 10.0)
@@ -845,27 +848,27 @@ final class IntegrationTests: XCTestCase {
     let startTime = CFAbsoluteTimeGetCurrent()
     let setExpectation = XCTestExpectation(description: "Change RPM")
     runCLISet(["set", "0", "5000"]) { _, exitCode in
-      XCTAssertEqual(exitCode, 0)
+      expect(exitCode) == 0
       setExpectation.fulfill()
     }
     wait(for: [setExpectation], timeout: 15.0)
 
     waitForStateStable()
-    let transitionTime = (CFAbsoluteTimeGetCurrent() - startTime) * 1000
+    let transitionTime = (CFAbsoluteTimeGetCurrent() - startTime) * 1_000
     print("Transition time (Manual → Manual): \(Int(transitionTime))ms")
 
     // Manual-to-manual should be faster than auto-to-manual
     // since Ftst is already set
-    XCTAssertLessThan(
-      transitionTime, 30_000,
-      "Manual-to-manual transition should complete within 30s")
+    expect(transitionTime).to(
+      beLessThan(30_000),
+      description: "Manual-to-manual transition should complete within 30s")
 
     // Verify new target
     let verifyExpectation = XCTestExpectation(description: "Verify new target")
     runCLI(["list"]) { output, _ in
       let lines = output.components(separatedBy: "\n")
       for line in lines where line.contains("Fan 0:") {
-        XCTAssertTrue(line.contains("Target: 5000"), "Target should be 5000")
+        expect(line.contains("Target: 5000")).to(beTrue(), description: "Target should be 5000")
       }
       verifyExpectation.fulfill()
     }
@@ -939,7 +942,7 @@ final class IntegrationTests: XCTestCase {
 
     runCLI(["set", "99", "4000"]) { _, exitCode in
       // Should fail gracefully
-      XCTAssertNotEqual(exitCode, 0, "Should fail for invalid fan index")
+      expect(exitCode).toNot(equal(0), description: "Should fail for invalid fan index")
       expectation.fulfill()
     }
 
