@@ -547,9 +547,9 @@ final class IntegrationTests: XCTestCase {
         expect(line.contains("Mode: Manual")).to(beTrue(), description: "Mode should be Manual")
         // RPM should be 0 or very close
         if let match = line.range(of: "Fan 0: (\\d+) RPM", options: .regularExpression) {
-          let rpmStr = String(line[match]).replacingOccurrences(
-            of: "Fan 0: ", with: ""
-          ).replacingOccurrences(of: " RPM", with: "")
+          let rpmStr = String(line[match])
+            .replacingOccurrences(of: "Fan 0: ", with: "")
+            .replacingOccurrences(of: " RPM", with: "")
           if let rpm = Int(rpmStr) {
             expect(rpm).to(beLessThanOrEqualTo(250), description: "RPM should be 0 or near 0")
           }
@@ -589,9 +589,9 @@ final class IntegrationTests: XCTestCase {
             description: "[\(expectations.chipName)] Target should be clamped to min (\(expectations.reportedMinRPM))")
         }
         if let match = line.range(of: "Fan 0: (\\d+) RPM", options: .regularExpression) {
-          let rpmStr = String(line[match]).replacingOccurrences(
-            of: "Fan 0: ", with: ""
-          ).replacingOccurrences(of: " RPM", with: "")
+          let rpmStr = String(line[match])
+            .replacingOccurrences(of: "Fan 0: ", with: "")
+            .replacingOccurrences(of: " RPM", with: "")
           if let rpm = Int(rpmStr) {
             expect(rpm).to(
               beLessThanOrEqualTo(expectations.reportedMinRPM + expectations.rpmTolerance),
@@ -623,9 +623,9 @@ final class IntegrationTests: XCTestCase {
       for line in lines where line.contains("Fan 0:") {
         expect(line.contains("Target: 10000")).to(beTrue(), description: "Target should be 10000")
         if let match = line.range(of: "Fan 0: (\\d+) RPM", options: .regularExpression) {
-          let rpmStr = String(line[match]).replacingOccurrences(
-            of: "Fan 0: ", with: ""
-          ).replacingOccurrences(of: " RPM", with: "")
+          let rpmStr = String(line[match])
+            .replacingOccurrences(of: "Fan 0: ", with: "")
+            .replacingOccurrences(of: " RPM", with: "")
           if let rpm = Int(rpmStr) {
             expect(rpm).to(
               beGreaterThan(expectations.reportedMinRPM),
@@ -658,9 +658,9 @@ final class IntegrationTests: XCTestCase {
     var initialFan1RPM = 0
     runCLI(["list"]) { output, _ in
       if let match = output.range(of: "Fan 1: (\\d+) RPM", options: .regularExpression) {
-        let rpmStr = String(output[match]).replacingOccurrences(
-          of: "Fan 1: ", with: ""
-        ).replacingOccurrences(of: " RPM", with: "")
+        let rpmStr = String(output[match])
+          .replacingOccurrences(of: "Fan 1: ", with: "")
+          .replacingOccurrences(of: " RPM", with: "")
         initialFan1RPM = Int(rpmStr) ?? 0
       }
       initialExpectation.fulfill()
@@ -681,9 +681,9 @@ final class IntegrationTests: XCTestCase {
       for line in lines where line.contains("Fan 1:") {
         expect(line.contains("Mode: Auto")).to(beTrue(), description: "Fan 1 should be Auto")
         if let match = line.range(of: "Fan 1: (\\d+) RPM", options: .regularExpression) {
-          let rpmStr = String(line[match]).replacingOccurrences(
-            of: "Fan 1: ", with: ""
-          ).replacingOccurrences(of: " RPM", with: "")
+          let rpmStr = String(line[match])
+            .replacingOccurrences(of: "Fan 1: ", with: "")
+            .replacingOccurrences(of: " RPM", with: "")
           if let rpm = Int(rpmStr) {
             if initialFan1RPM == 0 {
               expect(rpm).to(

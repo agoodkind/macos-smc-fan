@@ -56,7 +56,7 @@ struct FanArbitratorTests {
     arbitrator.registerClientName("other", for: otherID)
     _ = arbitrator.decideClaim(fan: 0, priority: 50, clientID: ownerID)
     let result = arbitrator.decideClaim(fan: 0, priority: 10, clientID: otherID)
-    guard case .rejected(let name, let priority) = result else {
+    guard case let .rejected(name, priority) = result else {
       Issue.record("expected rejection")
       return
     }

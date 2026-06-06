@@ -78,8 +78,8 @@ public final class SMCConnection: @unchecked Sendable {
 
         let readOutput = try callSMC(input: readParam)
 
-        let bytes = withUnsafeBytes(of: readOutput.bytes) {
-            Array($0.prefix(Int(dataSize)))
+        let bytes = withUnsafeBytes(of: readOutput.bytes) { rawBuffer in
+            Array(rawBuffer.prefix(Int(dataSize)))
         }
 
         let preview = bytes.prefix(4).map { String(format: "0x%02x", $0) }.joined(separator: " ")
@@ -151,7 +151,7 @@ public final class SMCConnection: @unchecked Sendable {
         sysctlbyname("hw.model", nil, &size, nil, 0)
         var model = [CChar](repeating: 0, count: size)
         sysctlbyname("hw.model", &model, &size, nil, 0)
-        return String(decoding: model.prefix { $0 != 0 }.map { UInt8($0) }, as: UTF8.self)
+        return String(bytes: model.prefix { $0 != 0 }.map { UInt8($0) }, encoding: .utf8) ?? ""
     }
 
     // MARK: Public Helpers
@@ -165,8 +165,8 @@ public final class SMCConnection: @unchecked Sendable {
         param.data8 = SMCCommand.readKeyInfo.rawValue
         let output = try callSMC(input: param)
 
-        let dataType = withUnsafeBytes(of: output.keyInfo.dataType.bigEndian) {
-            String(bytes: $0, encoding: .ascii) ?? "????"
+        let dataType = withUnsafeBytes(of: output.keyInfo.dataType.bigEndian) { rawBuffer in
+            String(bytes: rawBuffer, encoding: .ascii) ?? "????"
         }
         if output.result != SMCResultCode.success.rawValue {
             guard let resultCode = SMCResultCode(rawValue: output.result) else {

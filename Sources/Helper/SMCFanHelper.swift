@@ -205,7 +205,7 @@ class SMCFanHelper: NSObject, NSXPCListenerDelegate, SMCFanHelperProtocol, @unch
         }
 
         switch arbitrator.decideClaim(fan: fanIndex, priority: priority, clientID: clientID) {
-        case .rejected(let ownerName, let ownerPriority):
+        case let .rejected(ownerName, ownerPriority):
             log.debug(
                 "smc.fan.setrpm.preempted fan=\(fanIndex, privacy: .public) owner=\(ownerName, privacy: .public) owner_priority=\(ownerPriority, privacy: .public) caller_priority=\(priority, privacy: .public)"
             )
@@ -330,7 +330,7 @@ class SMCFanHelper: NSObject, NSXPCListenerDelegate, SMCFanHelperProtocol, @unch
         }
 
         switch arbitrator.decideClaim(fan: fanIndex, priority: priority, clientID: clientID) {
-        case .rejected(let ownerName, let ownerPriority):
+        case let .rejected(ownerName, ownerPriority):
             log.debug(
                 "smc.fan.setauto.preempted fan=\(fanIndex, privacy: .public) owner=\(ownerName, privacy: .public) owner_priority=\(ownerPriority, privacy: .public) caller_priority=\(priority, privacy: .public)"
             )

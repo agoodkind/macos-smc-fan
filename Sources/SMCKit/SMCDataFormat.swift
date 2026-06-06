@@ -60,15 +60,15 @@ public enum SMCDataFormat: Sendable {
 
   public static func uint16(from bytes: [UInt8]) -> UInt16 {
     guard bytes.count >= 2 else { return 0 }
-    return bytes.withUnsafeBytes {
-      UInt16(bigEndian: $0.loadUnaligned(as: UInt16.self))
+    return bytes.withUnsafeBytes { rawBuffer in
+      UInt16(bigEndian: rawBuffer.loadUnaligned(as: UInt16.self))
     }
   }
 
   public static func uint32(from bytes: [UInt8]) -> UInt32 {
     guard bytes.count >= 4 else { return 0 }
-    return bytes.withUnsafeBytes {
-      UInt32(bigEndian: $0.loadUnaligned(as: UInt32.self))
+    return bytes.withUnsafeBytes { rawBuffer in
+      UInt32(bigEndian: rawBuffer.loadUnaligned(as: UInt32.self))
     }
   }
 }
