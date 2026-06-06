@@ -34,19 +34,19 @@ struct HardwareExpectations: Codable, Sendable {
 }
 
 enum BelowMinBehavior: String, Codable, Sendable {
+  /// Firmware clamps target to hardware minimum (e.g., Target: 2317)
+  case clampedToMin = "clampedToMin"
   /// Firmware preserves the exact target value written (e.g., Target: 1000)
   case preserved
-  /// Firmware clamps target to hardware minimum (e.g., Target: 2317)
-  case clampedToMin
 }
 
 enum AutoModeTargetBehavior: String, Codable, Sendable {
+  /// Target shows the hardware min RPM (thermalmonitord sets it)
+  case minRPM = "minRPM"
   /// Target shows 0 (system control)
   case zero
-  /// Target shows the hardware min RPM (thermalmonitord sets it)
-  case minRPM
   /// Either 0 or min RPM depending on thermal state
-  case zeroOrMinRPM
+  case zeroOrMinRPM = "zeroOrMinRPM"
 }
 
 extension HardwareExpectations {

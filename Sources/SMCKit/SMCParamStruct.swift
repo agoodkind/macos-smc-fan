@@ -14,20 +14,20 @@ import Foundation
 public enum SMCCommand: UInt8 {
   case kernelIndex = 2
   case readBytes = 5
-  case writeBytes = 6
   case readIndex = 8
   case readKeyInfo = 9
+  case writeBytes = 6
 }
 
 // MARK: - SMC Error
 
 /// Swift-native error type for SMC operations
 public enum SMCError: LocalizedError, Sendable {
-  case notOpen
   case connectionFailed
-  case timeout
-  case ioKit(kern_return_t)
   case firmware(SMCResultCode)
+  case ioKit(kern_return_t)
+  case notOpen
+  case timeout
 
   public var errorDescription: String? {
     switch self {
@@ -50,18 +50,18 @@ public enum SMCError: LocalizedError, Sendable {
 /// SMC firmware result codes (from VirtualSMC SDK - AppleSmc.h)
 /// These are returned in output.result field, distinct from IOKit return values.
 public enum SMCResultCode: UInt8, CustomStringConvertible, Sendable {
-  case success = 0x00
-  case error = 0x01
-  case commCollision = 0x80  // Communication collision
-  case spuriousData = 0x81  // Unexpected data
+  case badArgumentError = 0x89  // Bad argument to SMC function
   case badCommand = 0x82  // Firmware rejected (e.g., write to F%dMd in Mode 3)
   case badParameter = 0x83  // Invalid parameter value
+  case commCollision = 0x80  // Communication collision
+  case error = 0x01
+  case framingError = 0x88  // Protocol framing error
+  case keySizeMismatch = 0x87  // Data size mismatch
   case notFound = 0x84  // Key does not exist
   case notReadable = 0x85  // Key is write-only
   case notWritable = 0x86  // Key is read-only
-  case keySizeMismatch = 0x87  // Data size mismatch
-  case framingError = 0x88  // Protocol framing error
-  case badArgumentError = 0x89  // Bad argument to SMC function
+  case spuriousData = 0x81  // Unexpected data
+  case success = 0x00
 
   public var description: String {
     let name =

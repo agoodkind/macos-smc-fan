@@ -52,8 +52,8 @@ struct Authorization {
 }
 
 enum AuthorizationError: Error, LocalizedError {
-  case createFailed(OSStatus)
   case copyRightsFailed(OSStatus)
+  case createFailed(OSStatus)
 
   var errorDescription: String? {
     switch self {

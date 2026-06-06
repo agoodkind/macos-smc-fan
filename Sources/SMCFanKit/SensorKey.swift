@@ -13,15 +13,15 @@ import Foundation
 public enum SensorGroup: String, Sendable {
   case cpu = "CPU"
   case gpu = "GPU"
-  case system = "System"
   case memory = "Memory"
+  case system = "System"
 }
 
 public enum SensorType: String, Sendable {
+  case current = "Current"
+  case power = "Power"
   case temperature = "Temperature"
   case voltage = "Voltage"
-  case power = "Power"
-  case current = "Current"
 }
 
 // MARK: - Sensor Definition
