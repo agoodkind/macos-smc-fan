@@ -60,12 +60,12 @@ enum Commands {
       return
     }
 
-    let grouped = Dictionary(grouping: readings, by: { $0.sensor.type })
+    let grouped = Dictionary(grouping: readings) { $0.sensor.type }
 
     for type in [SensorType.temperature, .voltage, .power, .current] {
       guard let sensors = grouped[type], !sensors.isEmpty else { continue }
       CLIOut.print("\n\(type.rawValue):")
-      let byGroup = Dictionary(grouping: sensors, by: { $0.sensor.group })
+      let byGroup = Dictionary(grouping: sensors) { $0.sensor.group }
       for group in [SensorGroup.cpu, .gpu, .memory, .system] {
         guard let items = byGroup[group], !items.isEmpty else { continue }
         CLIOut.print("  \(group.rawValue):")

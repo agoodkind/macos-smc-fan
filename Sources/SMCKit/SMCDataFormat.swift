@@ -29,12 +29,12 @@ public enum SMCDataFormat: Sendable {
   public static func float(from bytes: [UInt8], size: UInt32) -> Float {
     if size == 4, bytes.count >= 4 {
       return bytes.withUnsafeBytes { $0.loadUnaligned(as: Float.self) }
-    } else if bytes.count >= 2 {
+    }
+    if bytes.count >= 2 {
       let raw = uint16(from: bytes)
       return Float(raw) / 4.0
-    } else {
-      return 0
     }
+    return 0
   }
 
   public static func bytes(from value: Float, size: UInt32) -> [UInt8] {

@@ -375,7 +375,7 @@ class SMCFanHelper: NSObject, NSXPCListenerDelegate, SMCFanHelperProtocol, @unch
             let checkKey = SMCFanKey.key(fanController.config.modeKeyFormat, fan: i)
             do {
                 let (checkBytes, _) = try fanController.connection.readKey(checkKey)
-                if !checkBytes.isEmpty && checkBytes[0] == 1 { otherFansManual += 1 }
+                if !checkBytes.isEmpty, checkBytes[0] == 1 { otherFansManual += 1 }
             } catch {
                 continue
             }
@@ -434,10 +434,10 @@ class SMCFanHelper: NSObject, NSXPCListenerDelegate, SMCFanHelperProtocol, @unch
     ) {
         let rows = arbitrator.getOwnershipSnapshot()
         reply(
-            rows.map { $0.fanIndex },
-            rows.map { $0.clientName },
-            rows.map { $0.priority },
-            rows.map { $0.ageSeconds }
+            rows.map(\.fanIndex),
+            rows.map(\.clientName),
+            rows.map(\.priority),
+            rows.map(\.ageSeconds)
         )
     }
 

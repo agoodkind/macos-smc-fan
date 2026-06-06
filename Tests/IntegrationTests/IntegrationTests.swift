@@ -921,7 +921,7 @@ final class IntegrationTests: XCTestCase {
       let rpmsClose = currentRPMs.count == previousRPMs.count
         && zip(currentRPMs, previousRPMs).allSatisfy { abs($0 - $1) <= tolerance }
 
-      if modesMatch && rpmsClose {
+      if modesMatch, rpmsClose {
         stableCount += 1
         if stableCount >= 3 {
           return
@@ -958,7 +958,7 @@ final class IntegrationTests: XCTestCase {
     if sensorResult.exitCode == 0 {
       for line in sensorResult.output.components(separatedBy: "\n") {
         let trimmed = line.trimmingCharacters(in: .whitespaces)
-        if trimmed.hasSuffix("C") && trimmed.contains(":") {
+        if trimmed.hasSuffix("C"), trimmed.contains(":") {
           temps.append(trimmed)
         }
       }

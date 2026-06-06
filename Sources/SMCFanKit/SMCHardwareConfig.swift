@@ -41,9 +41,8 @@ extension SMCHardwareConfig {
                 log.debug("hw.probe.modeKey key=\(testKey, privacy: .public) found=true size=\(size, privacy: .public) format=\(candidate, privacy: .public)")
                 modeKey = candidate
                 break
-            } else {
-                log.debug("hw.probe.modeKey key=\(testKey, privacy: .public) found=false")
             }
+            log.debug("hw.probe.modeKey key=\(testKey, privacy: .public) found=false")
         }
 
         var ftst = false
