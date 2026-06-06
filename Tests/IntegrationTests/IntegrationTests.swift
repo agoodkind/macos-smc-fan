@@ -17,7 +17,17 @@ import XCTest
 /// NOT via: swift test (these will be skipped)
 final class IntegrationTests: XCTestCase {
   private var helperConnection: NSXPCConnection?
-  private var hw: HardwareExpectations!
+  private var hw: HardwareExpectations?
+
+  /// Non-optional accessor for `hw`, which `setUpWithError` always assigns
+  /// before any test body runs. Mirrors the previous implicitly-unwrapped
+  /// optional's crash-on-nil contract.
+  private var expectations: HardwareExpectations {
+    guard let hw else {
+      preconditionFailure("hw not set; setUpWithError must run before tests")
+    }
+    return hw
+  }
 
   override func setUpWithError() throws {
     try super.setUpWithError()
@@ -34,7 +44,7 @@ final class IntegrationTests: XCTestCase {
       )
     }
     hw = detected
-    fputs("[setup] Hardware: \(hw.chipName) (\(hw.modelIdentifier))\n", stderr)
+    fputs("[setup] Hardware: \(detected.chipName) (\(detected.modelIdentifier))\n", stderr)
     fflush(stderr)
 
     if #available(macOS 13.0, *) {
@@ -85,10 +95,12 @@ final class IntegrationTests: XCTestCase {
       beTrue(), description: "Neither F0md nor F0Md found. Fan mode key missing from SMC.")
 
     // Verify against hardware expectations
-    if hw.modeKeyFormat == "F%dmd" {
-      expect(hasLowerMode).to(beTrue(), description: "[\(hw.chipName)] Expected lowercase mode key")
+    if expectations.modeKeyFormat == "F%dmd" {
+      expect(hasLowerMode).to(
+        beTrue(), description: "[\(expectations.chipName)] Expected lowercase mode key")
     } else {
-      expect(hasUpperMode).to(beTrue(), description: "[\(hw.chipName)] Expected uppercase mode key")
+      expect(hasUpperMode).to(
+        beTrue(), description: "[\(expectations.chipName)] Expected uppercase mode key")
     }
 
     // Check Ftst: fetchKeyInfo throws on notFound, so read exits non-zero when key absent
@@ -96,8 +108,10 @@ final class IntegrationTests: XCTestCase {
     let hasFtst = ftstResult.exitCode == 0
     fputs("[test] Ftst available: \(hasFtst) (exitCode=\(ftstResult.exitCode))\n", stderr)
     expect(hasFtst).to(
-      equal(hw.ftstPresent),
-      description: "[\(hw.chipName)] Ftst expectation mismatch: expected=\(hw.ftstPresent) actual=\(hasFtst)")
+      equal(expectations.ftstPresent),
+      description:
+        "[\(expectations.chipName)] Ftst expectation mismatch: expected=\(expectations.ftstPresent) actual=\(hasFtst)"
+    )
 
     fputs("[test] === Hardware Config ===\n", stderr)
     fputs(
@@ -488,25 +502,25 @@ final class IntegrationTests: XCTestCase {
 
     // Verify fans are in auto mode. Target depends on thermal state and hardware.
     let verifyExpectation = XCTestExpectation(description: "Verify system mode")
-    runCLI(["list"]) { [hw] output, _ in
+    runCLI(["list"]) { [expectations] output, _ in
       expect(output.contains("Mode: Auto")).to(
         beTrue(),
         description: "Fans should be in Auto mode")
-      switch hw!.autoModeTarget {
+      switch expectations.autoModeTarget {
       case .zero:
         expect(output.contains("Target: 0")).to(
           beTrue(),
-          description: "[\(hw!.chipName)] Target should be 0 (system control)")
+          description: "[\(expectations.chipName)] Target should be 0 (system control)")
       case .minRPM:
-        expect(output.contains("Target: \(hw!.reportedMinRPM)")).to(
+        expect(output.contains("Target: \(expectations.reportedMinRPM)")).to(
           beTrue(),
-          description: "[\(hw!.chipName)] Target should be \(hw!.reportedMinRPM) (thermalmonitord)")
+          description: "[\(expectations.chipName)] Target should be \(expectations.reportedMinRPM) (thermalmonitord)")
       case .zeroOrMinRPM:
         let hasZero = output.contains("Target: 0")
-        let hasMin = output.contains("Target: \(hw!.reportedMinRPM)")
+        let hasMin = output.contains("Target: \(expectations.reportedMinRPM)")
         expect(hasZero || hasMin).to(
           beTrue(),
-          description: "[\(hw!.chipName)] Target should be 0 or \(hw!.reportedMinRPM)")
+          description: "[\(expectations.chipName)] Target should be 0 or \(expectations.reportedMinRPM)")
       }
       verifyExpectation.fulfill()
     }
@@ -561,18 +575,18 @@ final class IntegrationTests: XCTestCase {
     Thread.sleep(forTimeInterval: 3.0)
 
     let verifyExpectation = XCTestExpectation(description: "Verify below min")
-    runCLI(["list"]) { [hw] output, _ in
+    runCLI(["list"]) { [expectations] output, _ in
       let lines = output.components(separatedBy: "\n")
       for line in lines where line.contains("Fan 0:") {
-        switch hw!.belowMinBehavior {
+        switch expectations.belowMinBehavior {
         case .preserved:
           expect(line.contains("Target: 1000")).to(
             beTrue(),
-            description: "[\(hw!.chipName)] Target should be preserved as 1000")
+            description: "[\(expectations.chipName)] Target should be preserved as 1000")
         case .clampedToMin:
-          expect(line.contains("Target: \(hw!.reportedMinRPM)")).to(
+          expect(line.contains("Target: \(expectations.reportedMinRPM)")).to(
             beTrue(),
-            description: "[\(hw!.chipName)] Target should be clamped to min (\(hw!.reportedMinRPM))")
+            description: "[\(expectations.chipName)] Target should be clamped to min (\(expectations.reportedMinRPM))")
         }
         if let match = line.range(of: "Fan 0: (\\d+) RPM", options: .regularExpression) {
           let rpmStr = String(line[match]).replacingOccurrences(
@@ -580,8 +594,8 @@ final class IntegrationTests: XCTestCase {
           ).replacingOccurrences(of: " RPM", with: "")
           if let rpm = Int(rpmStr) {
             expect(rpm).to(
-              beLessThanOrEqualTo(hw!.reportedMinRPM + hw!.rpmTolerance),
-              description: "[\(hw!.chipName)] RPM should be at or below hardware min")
+              beLessThanOrEqualTo(expectations.reportedMinRPM + expectations.rpmTolerance),
+              description: "[\(expectations.chipName)] RPM should be at or below hardware min")
           }
         }
       }
@@ -601,10 +615,10 @@ final class IntegrationTests: XCTestCase {
       setExpectation.fulfill()
     }
     wait(for: [setExpectation], timeout: 15.0)
-    Thread.sleep(forTimeInterval: hw.rampFromIdleSeconds)
+    Thread.sleep(forTimeInterval: expectations.rampFromIdleSeconds)
 
     let verifyExpectation = XCTestExpectation(description: "Verify clamped")
-    runCLI(["list"]) { [hw] output, _ in
+    runCLI(["list"]) { [expectations] output, _ in
       let lines = output.components(separatedBy: "\n")
       for line in lines where line.contains("Fan 0:") {
         expect(line.contains("Target: 10000")).to(beTrue(), description: "Target should be 10000")
@@ -614,8 +628,8 @@ final class IntegrationTests: XCTestCase {
           ).replacingOccurrences(of: " RPM", with: "")
           if let rpm = Int(rpmStr) {
             expect(rpm).to(
-              beGreaterThan(hw!.reportedMinRPM),
-              description: "[\(hw!.chipName)] RPM should reflect manual target or clamp")
+              beGreaterThan(expectations.reportedMinRPM),
+              description: "[\(expectations.chipName)] RPM should reflect manual target or clamp")
           }
         }
       }
@@ -630,8 +644,10 @@ final class IntegrationTests: XCTestCase {
   }
 
   func testOtherFanWakesToAutoMin_WhenFirstFanGoesManual() throws {
-    guard hw.manualWakesOtherFans else {
-      throw XCTSkip("[\(hw.chipName)] No Ftst on this hardware, manual mode does not wake other fans")
+    guard expectations.manualWakesOtherFans else {
+      throw XCTSkip(
+        "[\(expectations.chipName)] No Ftst on this hardware, manual mode does not wake other fans"
+      )
     }
 
     runCLI(["auto", "0"]) { _, _ in /* result intentionally ignored */ }

@@ -133,10 +133,10 @@ public final class SMCConnection: @unchecked Sendable {
             }
             let keyU32 = out.key
             let chars = [
-                Character(UnicodeScalar((keyU32 >> 24) & 0xFF)!),
-                Character(UnicodeScalar((keyU32 >> 16) & 0xFF)!),
-                Character(UnicodeScalar((keyU32 >> 8) & 0xFF)!),
-                Character(UnicodeScalar(keyU32 & 0xFF)!),
+                Character(UnicodeScalar(UInt8((keyU32 >> 24) & 0xFF))),
+                Character(UnicodeScalar(UInt8((keyU32 >> 16) & 0xFF))),
+                Character(UnicodeScalar(UInt8((keyU32 >> 8) & 0xFF))),
+                Character(UnicodeScalar(UInt8(keyU32 & 0xFF))),
             ]
             keys.append(String(chars))
         }
@@ -184,13 +184,17 @@ public final class SMCConnection: @unchecked Sendable {
     /// Call SMC with input parameters and return output
     public func callSMC(input: SMCParamStruct) throws -> SMCParamStruct {
         var inp = SMCParamStruct()
-        _ = withUnsafeMutableBytes(of: &inp) { memset($0.baseAddress!, 0, $0.count) }
+        withUnsafeMutableBytes(of: &inp) { rawBuffer in
+            if let base = rawBuffer.baseAddress { memset(base, 0, rawBuffer.count) }
+        }
         inp.key = input.key
         inp.data8 = input.data8
         inp.keyInfo.dataSize = input.keyInfo.dataSize
         inp.bytes = input.bytes
         var out = SMCParamStruct()
-        _ = withUnsafeMutableBytes(of: &out) { memset($0.baseAddress!, 0, $0.count) }
+        withUnsafeMutableBytes(of: &out) { rawBuffer in
+            if let base = rawBuffer.baseAddress { memset(base, 0, rawBuffer.count) }
+        }
         var outSize = MemoryLayout<SMCParamStruct>.stride
 
         let result = IOConnectCallStructMethod(
