@@ -17,14 +17,15 @@ SWIFT_BUILD_CMD := $(MAKE) SWIFT_MK_SKIP_FETCH=1 build-local
 SWIFT_CLEAN_CMD := rm -rf $(BUILD_DIR) $(PRODUCTS_DIR) SMCFanApp.xcodeproj
 SWIFT_TEST_CMD := swift test
 SWIFT_DEPLOY_CMD := $(MAKE) SWIFT_MK_SKIP_FETCH=1 install-helper
-SWIFT_LOG_AUDIT_CMD := $(MAKE) SWIFT_MK_SKIP_FETCH=1 log-audit-local
+# Logging enforcement is handled by swift-mk's stricter gates, so the hand-rolled
+# log-audit target was removed rather than wired through SWIFT_LOG_AUDIT_CMD.
 # Clean build so the dead-code gate reads a complete index.
 SWIFT_DEADCODE_BUILD_CMD := rm -rf $(BUILD_DIR) && $(MAKE) SWIFT_MK_SKIP_FETCH=1 build-local
 
 include bootstrap.mk
 
 .PHONY: build-local install-helper uninstall-helper test-integration format \
-	log-audit-local legacy-smcd-uninstall
+	legacy-smcd-uninstall
 
 # The Xcode app/helper build, run by swift-mk's `build` after the signing prelude
 # exports XCODE_XCCONFIG_FILE, so both schemes sign with the swift-mk identity.
@@ -44,23 +45,6 @@ build-local: generate
 	@mkdir -p $(PRODUCTS_DIR)
 	@cp -R "$(BUILD_DIR)/Build/Products/$(CONFIGURATION)/SMCFanHelper.app" "$(PRODUCTS_DIR)/"
 	@cp "$(BUILD_DIR)/Build/Products/$(CONFIGURATION)/smcfan" "$(PRODUCTS_DIR)/"
-
-log-audit-local:
-	@set -e; \
-	echo "scanning for forbidden output calls..."; \
-	! grep -rnE '(^|[^a-zA-Z_])(print|NSLog|debugPrint|dump)\(' Sources/ \
-		--include='*.swift' --exclude-dir=AppLog --exclude='CLIOut.swift' \
-		| grep -v 'CLIOut\.print\|CLIOut\.err' \
-	&& echo "  output calls: OK"; \
-	echo "scanning for direct Logger construction outside AppLog..."; \
-	! grep -rn 'Logger(subsystem:' Sources/ \
-		--include='*.swift' --exclude-dir=AppLog \
-	&& echo "  Logger construction: OK"; \
-	echo "scanning for swift-log import outside AppLog..."; \
-	! grep -rn 'import Logging' Sources/ \
-		--include='*.swift' --exclude-dir=AppLog \
-	&& echo "  swift-log direct use: OK"; \
-	echo "log-audit PASSED"
 
 # `make install` flows through swift-mk: install -> deploy -> build, then this.
 install-helper: uninstall-helper
