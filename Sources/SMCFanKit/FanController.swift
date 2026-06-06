@@ -12,6 +12,13 @@ import SMCKit
 
 private let log = AppLog.make(category: "FanControl")
 
+/// Delay after writing the Ftst key before the mode key accepts manual writes.
+private let ftstSettleDelaySeconds: TimeInterval = 0.5
+private let ftstSettleDelayNanoseconds: UInt64 = 500_000_000
+/// Backoff between mode-key write retries while waiting for the unlock to land.
+private let ftstRetryDelaySeconds: TimeInterval = 0.1
+private let ftstRetryDelayNanoseconds: UInt64 = 100_000_000
+
 // MARK: - Fan Control Strategy
 
 /// Strategy used to enable manual fan control
@@ -73,7 +80,7 @@ public class FanController {
         log.debug("fan.ftst.write fan=\(fanIndex, privacy: .public) value=1")
         try connection.writeKey(SMCFanKey.forceTest, bytes: [1])
 
-        Thread.sleep(forTimeInterval: 0.5)
+        Thread.sleep(forTimeInterval: ftstSettleDelaySeconds)
 
         let modeKey = SMCFanKey.key(config.modeKeyFormat, fan: fanIndex)
         let start = Date()
@@ -93,7 +100,7 @@ public class FanController {
                     log.error("fan.ftst.timeout fan=\(fanIndex, privacy: .public) attempts=\(attempt, privacy: .public) elapsed=\(String(format: "%.2f", elapsed), privacy: .public)s")
                     throw SMCError.timeout
                 }
-                Thread.sleep(forTimeInterval: 0.1)
+                Thread.sleep(forTimeInterval: ftstRetryDelaySeconds)
             }
         }
 
@@ -111,7 +118,7 @@ public class FanController {
         log.debug("fan.ftst.write fan=\(fanIndex, privacy: .public) value=1")
         try connection.writeKey(SMCFanKey.forceTest, bytes: [1])
 
-        try await Task.sleep(nanoseconds: 500_000_000)
+        try await Task.sleep(nanoseconds: ftstSettleDelayNanoseconds)
 
         let modeKey = SMCFanKey.key(config.modeKeyFormat, fan: fanIndex)
         let start = Date()
@@ -131,7 +138,7 @@ public class FanController {
                     log.error("fan.ftst.timeout fan=\(fanIndex, privacy: .public) attempts=\(attempt, privacy: .public) elapsed=\(String(format: "%.2f", elapsed), privacy: .public)s")
                     throw SMCError.timeout
                 }
-                try await Task.sleep(nanoseconds: 100_000_000)
+                try await Task.sleep(nanoseconds: ftstRetryDelayNanoseconds)
             }
         }
 

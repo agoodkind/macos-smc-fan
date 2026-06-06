@@ -8,6 +8,9 @@
 
 import Foundation
 
+/// Radix used when rendering SMC codes as hexadecimal in diagnostics.
+private let hexRadix = 16
+
 // MARK: - SMC Command
 
 /// SMC command selectors for IOConnectCallStructMethod
@@ -38,7 +41,7 @@ public enum SMCError: LocalizedError, Sendable {
     case .timeout:
       return "Operation timed out"
     case .ioKit(let code):
-      return "IOKit error: 0x\(String(code, radix: 16))"
+      return "IOKit error: 0x\(String(code, radix: hexRadix))"
     case .firmware(let code):
       return "SMC firmware error: \(code)"
     }
@@ -79,7 +82,7 @@ public enum SMCResultCode: UInt8, CustomStringConvertible, Sendable {
       case .framingError: "framingError"
       case .badArgumentError: "badArgumentError"
       }
-    return "\(name) (0x\(String(rawValue, radix: 16)))"
+    return "\(name) (0x\(String(rawValue, radix: hexRadix)))"
   }
 }
 

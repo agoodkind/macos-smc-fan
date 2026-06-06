@@ -12,6 +12,11 @@ import SMCFanProtocol
 
 private let log = AppLog.make(category: "XPCClient")
 
+/// Exit code used for CLI usage errors such as a missing argument value.
+private let usageErrorExitCode: Int32 = 2
+/// The `set` command requires a fan index and an RPM target.
+private let setCommandArgumentCount = 2
+
 /// Parsed CLI invocation: a command, its positional arguments, and the
 /// write priority (default high so ad hoc CLI writes preempt daemons).
 struct CLIInvocation {
@@ -32,7 +37,7 @@ func parseCLI(_ argv: [String]) -> CLIInvocation {
         argIndex += 1
       } else {
         CLIOut.err("Missing integer value for --priority")
-        exit(2)
+        exit(usageErrorExitCode)
       }
     default:
       if inv.command == nil {
@@ -63,7 +68,7 @@ struct SMCFan {
         try await Commands.list(priority: inv.priority)
 
       case "set":
-        guard inv.positional.count >= 2,
+        guard inv.positional.count >= setCommandArgumentCount,
               let fan = Int(inv.positional[0]),
               let rpm = Float(inv.positional[1])
         else {

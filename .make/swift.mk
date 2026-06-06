@@ -107,6 +107,10 @@ SWIFT_MK_SCRIPT_FILES := \
 	Sources/SwiftMkCore/Scope.swift \
 	Sources/SwiftMkCore/Swiftcheck.swift \
 	Sources/SwiftMkCore/DeadcodeScan.swift \
+	Sources/SwiftMkCore/DeadcodeScan+Witness.swift \
+	Sources/SwiftMkCore/DeadcodeBuildConfig.swift \
+	Sources/SwiftMkCore/WitnessFilter.swift \
+	Sources/SwiftMkCore/SigningBuildConfig.swift \
 	Sources/SwiftMkCore/Lint.swift \
 	Sources/SwiftMkCore/Lint+Run.swift \
 	Sources/SwiftMkCore/BaselineRunner.swift \
@@ -121,6 +125,10 @@ SWIFT_MK_SCRIPT_FILES := \
 	Sources/SwiftMkCore/FileLock.swift \
 	Tests/SwiftMkRenderCoreTests/TemplateRendererTests.swift \
 	Tests/SwiftMkCoreTests/SwiftMkCoreTests.swift \
+	Tests/SwiftMkCoreTests/DeadcodeBuildConfigTests.swift \
+	Tests/SwiftMkCoreTests/IndexCompletenessTests.swift \
+	Tests/SwiftMkCoreTests/WitnessFilterTests.swift \
+	Tests/SwiftMkCoreTests/SigningBuildConfigTests.swift \
 	notices.txt \
 	templates/xcode/IDETemplateMacros.plist.template
 
