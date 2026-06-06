@@ -25,14 +25,17 @@ import os
 public struct AppLogPrivacy: Sendable {
     public static let `public` = AppLogPrivacy(.public)
     public static let `private` = AppLogPrivacy(.private)
-    public static func `private`(mask: Mask) -> AppLogPrivacy { AppLogPrivacy(.privateHash) }
+
+    public static func `private`(mask _: Mask) -> AppLogPrivacy { AppLogPrivacy(.privateHash) }
 
     public struct Mask: Sendable {
         public static let hash = Mask()
     }
 
-    fileprivate enum Kind { case `public`, `private`, privateHash }
-    fileprivate let kind: Kind
+    private enum Kind { case `public`, `private`, privateHash }
+
+    private let kind: Kind
+
     private init(_ kind: Kind) { self.kind = kind }
 
     func render(_ value: String) -> String {

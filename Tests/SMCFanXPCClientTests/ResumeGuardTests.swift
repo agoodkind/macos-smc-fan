@@ -52,11 +52,13 @@ struct ResumeGuardTests {
 private final class Counter: @unchecked Sendable {
   private var _value = 0
   private let lock = NSLock()
+
   func increment() {
     lock.lock()
     _value += 1
     lock.unlock()
   }
+
   var value: Int {
     lock.lock()
     let current = _value

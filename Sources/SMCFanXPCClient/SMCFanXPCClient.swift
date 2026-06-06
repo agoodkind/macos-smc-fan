@@ -127,6 +127,7 @@ public final class SMCFanXPCClient: @unchecked Sendable {
     /// Seconds since the owner's last write, measured by the helper at
     /// snapshot time.
     public let secondsSinceLastWrite: TimeInterval
+
     public init(fanIndex: UInt, clientName: String, priority: Int, secondsSinceLastWrite: TimeInterval) {
       self.fanIndex = fanIndex
       self.clientName = clientName
@@ -321,8 +322,7 @@ public final class SMCFanXPCClient: @unchecked Sendable {
   public func getFanInfo(_ index: UInt) async throws -> FanInfo {
     try await self.ensureOpened()
     let conn = self.ensureConnection()
-    return try await withCheckedThrowingContinuation {
-      (continuation: CheckedContinuation<FanInfo, Error>) in
+    return try await withCheckedThrowingContinuation { continuation in
       let once = ResumeGuard()
       let proxy = conn.remoteObjectProxyWithErrorHandler { error in
         once.tryResume {
@@ -389,8 +389,7 @@ public final class SMCFanXPCClient: @unchecked Sendable {
   public func enumerateKeys() async -> [String] {
     do { try await self.ensureOpened() } catch { return [] }
     let conn = self.ensureConnection()
-    return await withCheckedContinuation {
-      (continuation: CheckedContinuation<[String], Never>) in
+    return await withCheckedContinuation { continuation in
       let once = ResumeGuard()
       let proxy = conn.remoteObjectProxyWithErrorHandler { error in
         once.tryResume {
@@ -412,8 +411,7 @@ public final class SMCFanXPCClient: @unchecked Sendable {
 
   public func registerClient(name: String) async throws {
     let conn = self.ensureConnection()
-    try await withCheckedThrowingContinuation {
-      (continuation: CheckedContinuation<Void, Error>) in
+    try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
       let once = ResumeGuard()
       let proxy = conn.remoteObjectProxyWithErrorHandler { error in
         once.tryResume {
@@ -436,8 +434,7 @@ public final class SMCFanXPCClient: @unchecked Sendable {
   public func getOwnership() async throws -> [OwnershipEntry] {
     try await self.ensureOpened()
     let conn = self.ensureConnection()
-    return try await withCheckedThrowingContinuation {
-      (continuation: CheckedContinuation<[OwnershipEntry], Error>) in
+    return try await withCheckedThrowingContinuation { continuation in
       let once = ResumeGuard()
       let proxy = conn.remoteObjectProxyWithErrorHandler { error in
         once.tryResume {
@@ -474,8 +471,7 @@ public final class SMCFanXPCClient: @unchecked Sendable {
     ) -> Void
   ) async throws -> T {
     let conn = self.ensureConnection()
-    return try await withCheckedThrowingContinuation {
-      (continuation: CheckedContinuation<T, Error>) in
+    return try await withCheckedThrowingContinuation { continuation in
       let once = ResumeGuard()
       let proxy = conn.remoteObjectProxyWithErrorHandler { error in
         once.tryResume {
@@ -518,8 +514,7 @@ public final class SMCFanXPCClient: @unchecked Sendable {
       try await self.ensureRegistered()
     }
     let conn = self.ensureConnection()
-    try await withCheckedThrowingContinuation {
-      (continuation: CheckedContinuation<Void, Error>) in
+    try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
       let once = ResumeGuard()
       let proxy = conn.remoteObjectProxyWithErrorHandler { error in
         once.tryResume {
@@ -554,8 +549,7 @@ public final class SMCFanXPCClient: @unchecked Sendable {
     ) -> Void
   ) async throws {
     let conn = self.ensureConnection()
-    try await withCheckedThrowingContinuation {
-      (continuation: CheckedContinuation<Void, Error>) in
+    try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
       let once = ResumeGuard()
       let proxy = conn.remoteObjectProxyWithErrorHandler { error in
         once.tryResume {
