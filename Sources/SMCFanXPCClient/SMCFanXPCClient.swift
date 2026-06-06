@@ -148,7 +148,7 @@ public final class SMCFanXPCClient: @unchecked Sendable {
     clientName: String? = nil,
     defaultPriority: Int = SMCFanPriority.curveNormal,
     syncTimeout: TimeInterval = SMCFanXPCClient.defaultSyncTimeout
-  ) throws {
+  ) {
     self.helperBundleID = SMCFanConfiguration.default.helperBundleID
     self.syncTimeout = syncTimeout
     self.clientName = clientName
@@ -181,7 +181,7 @@ public final class SMCFanXPCClient: @unchecked Sendable {
 
   // MARK: - Connection management
 
-  private func ensureConnection() throws -> NSXPCConnection {
+  private func ensureConnection() -> NSXPCConnection {
     self.lock.lock()
     if let conn = self.connection {
       self.lock.unlock()
@@ -320,7 +320,7 @@ public final class SMCFanXPCClient: @unchecked Sendable {
 
   public func getFanInfo(_ index: UInt) async throws -> FanInfo {
     try await self.ensureOpened()
-    let conn = try self.ensureConnection()
+    let conn = self.ensureConnection()
     return try await withCheckedThrowingContinuation {
       (continuation: CheckedContinuation<FanInfo, Error>) in
       let once = ResumeGuard()
@@ -388,8 +388,7 @@ public final class SMCFanXPCClient: @unchecked Sendable {
 
   public func enumerateKeys() async -> [String] {
     do { try await self.ensureOpened() } catch { return [] }
-    let conn: NSXPCConnection
-    do { conn = try self.ensureConnection() } catch { return [] }
+    let conn = self.ensureConnection()
     return await withCheckedContinuation {
       (continuation: CheckedContinuation<[String], Never>) in
       let once = ResumeGuard()
@@ -412,7 +411,7 @@ public final class SMCFanXPCClient: @unchecked Sendable {
   }
 
   public func registerClient(name: String) async throws {
-    let conn = try self.ensureConnection()
+    let conn = self.ensureConnection()
     try await withCheckedThrowingContinuation {
       (continuation: CheckedContinuation<Void, Error>) in
       let once = ResumeGuard()
@@ -436,7 +435,7 @@ public final class SMCFanXPCClient: @unchecked Sendable {
 
   public func getOwnership() async throws -> [OwnershipEntry] {
     try await self.ensureOpened()
-    let conn = try self.ensureConnection()
+    let conn = self.ensureConnection()
     return try await withCheckedThrowingContinuation {
       (continuation: CheckedContinuation<[OwnershipEntry], Error>) in
       let once = ResumeGuard()
@@ -474,7 +473,7 @@ public final class SMCFanXPCClient: @unchecked Sendable {
       @escaping @Sendable (Bool, T, String?) -> Void
     ) -> Void
   ) async throws -> T {
-    let conn = try self.ensureConnection()
+    let conn = self.ensureConnection()
     return try await withCheckedThrowingContinuation {
       (continuation: CheckedContinuation<T, Error>) in
       let once = ResumeGuard()
@@ -514,7 +513,7 @@ public final class SMCFanXPCClient: @unchecked Sendable {
     if !skipEnsureRegistered {
       try await self.ensureRegistered()
     }
-    let conn = try self.ensureConnection()
+    let conn = self.ensureConnection()
     try await withCheckedThrowingContinuation {
       (continuation: CheckedContinuation<Void, Error>) in
       let once = ResumeGuard()
@@ -550,7 +549,7 @@ public final class SMCFanXPCClient: @unchecked Sendable {
       @escaping @Sendable (Bool, Bool, String?) -> Void
     ) -> Void
   ) async throws {
-    let conn = try self.ensureConnection()
+    let conn = self.ensureConnection()
     try await withCheckedThrowingContinuation {
       (continuation: CheckedContinuation<Void, Error>) in
       let once = ResumeGuard()
@@ -602,7 +601,7 @@ public final class SMCFanXPCClient: @unchecked Sendable {
 
   public func getFanInfoSync(_ index: UInt) throws -> FanInfo {
     try self.ensureOpenedSync()
-    let conn = try self.ensureConnection()
+    let conn = self.ensureConnection()
     let errBox = SyncErrorBox()
     let infoBox = SyncFanInfoBox()
     let sem = DispatchSemaphore(value: 0)
@@ -684,7 +683,7 @@ public final class SMCFanXPCClient: @unchecked Sendable {
     if !skipEnsureRegistered {
       try self.ensureRegisteredSync()
     }
-    let conn = try self.ensureConnection()
+    let conn = self.ensureConnection()
     let errBox = SyncErrorBox()
     let sem = DispatchSemaphore(value: 0)
     let once = ResumeGuard()
@@ -721,7 +720,7 @@ public final class SMCFanXPCClient: @unchecked Sendable {
     label: String,
     _ block: (SMCFanHelperProtocol, @escaping @Sendable (Bool, Bool, String?) -> Void) -> Void
   ) throws {
-    let conn = try self.ensureConnection()
+    let conn = self.ensureConnection()
     let errBox = SyncErrorBox()
     let sem = DispatchSemaphore(value: 0)
     let once = ResumeGuard()

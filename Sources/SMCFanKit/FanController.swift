@@ -30,9 +30,9 @@ public class FanController {
     public let connection: SMCConnection
     public let config: SMCHardwareConfig
 
-    public init(connection: SMCConnection) throws {
+    public init(connection: SMCConnection) {
         self.connection = connection
-        self.config = try SMCHardwareConfig.detectHardwareKeys(connection: connection)
+        self.config = SMCHardwareConfig.detectHardwareKeys(connection: connection)
     }
 
     public init(connection: SMCConnection, hardwareConfig: SMCHardwareConfig) {

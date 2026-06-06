@@ -74,7 +74,7 @@ class SMCFanHelper: NSObject, NSXPCListenerDelegate, SMCFanHelperProtocol, @unch
     private func ensureConnected() throws {
         if fanController == nil {
             let conn = try SMCConnection()
-            fanController = try FanController(connection: conn)
+            fanController = FanController(connection: conn)
             log.debug("smc.connection.established")
         }
     }

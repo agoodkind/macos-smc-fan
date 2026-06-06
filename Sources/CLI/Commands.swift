@@ -14,14 +14,14 @@ import SMCFanXPCClient
 
 private let log = AppLog.make(category: "XPCClient")
 
-private func makeClient(priority: Int) throws -> SMCFanXPCClient {
-  try SMCFanXPCClient(clientName: "smcfan-cli", defaultPriority: priority)
+private func makeClient(priority: Int) -> SMCFanXPCClient {
+  SMCFanXPCClient(clientName: "smcfan-cli", defaultPriority: priority)
 }
 
 enum Commands {
 
   static func list(priority: Int) async throws {
-    let client = try makeClient(priority: priority)
+    let client = makeClient(priority: priority)
     try await client.open()
 
     let count = try await client.getFanCount()
@@ -43,7 +43,7 @@ enum Commands {
   }
 
   static func sensors(priority: Int) async throws {
-    let client = try makeClient(priority: priority)
+    let client = makeClient(priority: priority)
     try await client.open()
 
     let allKeys = SensorCatalog.keysForCurrentHardware()
@@ -87,7 +87,7 @@ enum Commands {
     log.debug(
       "fan.set.start fan=\(fan, privacy: .public) rpm=\(Int(rpm), privacy: .public) priority=\(priority, privacy: .public)"
     )
-    let client = try makeClient(priority: priority)
+    let client = makeClient(priority: priority)
     try await client.setFanRPM(UInt(fan), rpm: rpm)
     CLIOut.print("Set fan \(fan) to \(Int(rpm)) RPM")
   }
@@ -96,20 +96,20 @@ enum Commands {
     log.debug(
       "fan.auto.start fan=\(fan, privacy: .public) priority=\(priority, privacy: .public)"
     )
-    let client = try makeClient(priority: priority)
+    let client = makeClient(priority: priority)
     try await client.setFanAuto(UInt(fan))
     CLIOut.print("Set fan \(fan) to auto mode")
   }
 
   static func read(key: String, priority: Int) async throws {
-    let client = try makeClient(priority: priority)
+    let client = makeClient(priority: priority)
     try await client.open()
     let value = try await client.readKey(key)
     CLIOut.print("\(key) = \(value)")
   }
 
   static func keys(filter: String? = nil, priority: Int) async throws {
-    let client = try makeClient(priority: priority)
+    let client = makeClient(priority: priority)
     try await client.open()
     let allKeys = await client.enumerateKeys()
     let filtered = filter.map { f in allKeys.filter { $0.hasPrefix(f) } } ?? allKeys
@@ -126,7 +126,7 @@ enum Commands {
   /// Live view of the helper's arbitration state. Shows which client
   /// owns each fan, at what priority, and how long ago they last wrote.
   static func owners(priority: Int) async throws {
-    let client = try makeClient(priority: priority)
+    let client = makeClient(priority: priority)
     let rows = try await client.getOwnership()
     if rows.isEmpty {
       CLIOut.print("No fans currently claimed.")

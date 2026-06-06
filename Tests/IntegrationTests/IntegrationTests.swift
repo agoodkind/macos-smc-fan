@@ -68,7 +68,7 @@ final class IntegrationTests: XCTestCase {
   // before any fan control tests. If these fail, the rest will too,
   // and the output tells you exactly why.
 
-  func testA_SMCKeyDiscovery() throws {
+  func testA_SMCKeyDiscovery() {
     // Probe individual keys to detect casing and availability.
     // This catches the F0Md vs F0md issue without using the `keys` enumeration command.
     let fnumResult = runCLISync(["read", "FNum"])
@@ -108,7 +108,7 @@ final class IntegrationTests: XCTestCase {
     fflush(stderr)
   }
 
-  func testA_SMCReadKeyInfo() throws {
+  func testA_SMCReadKeyInfo() {
     // Verify readKeyInfo succeeds for all expected fan keys.
     // If this fails with SmcNotFound (0x84), the key name is wrong.
     let expectedKeys = ["FNum", "F0Ac", "F0Tg", "F0Mn", "F0Mx"]
@@ -130,7 +130,7 @@ final class IntegrationTests: XCTestCase {
     )
   }
 
-  func testA_HardwareDetectionLogs() throws {
+  func testA_HardwareDetectionLogs() {
     // Verify the helper logs hardware detection on startup.
     // The helper output should contain detection results.
     let result = runCLISync(["list"])
@@ -153,7 +153,7 @@ final class IntegrationTests: XCTestCase {
 
   // MARK: - XPC Connection Tests
 
-  func testHelperConnection() throws {
+  func testHelperConnection() {
     let connection = NSXPCConnection(
       machServiceName: "io.goodkind.smcfanhelper",
       options: .privileged
@@ -171,7 +171,7 @@ final class IntegrationTests: XCTestCase {
 
   // MARK: - Fan Read Tests
 
-  func testReadFanCount() throws {
+  func testReadFanCount() {
     let expectation = XCTestExpectation(description: "Read fan count")
     var fanCount: UInt = 0
 
@@ -192,7 +192,7 @@ final class IntegrationTests: XCTestCase {
     wait(for: [expectation], timeout: 10.0)
   }
 
-  func testReadFanInfo() throws {
+  func testReadFanInfo() {
     let expectation = XCTestExpectation(description: "Read fan info")
 
     runCLI(["list"]) { output, exitCode in
@@ -211,7 +211,7 @@ final class IntegrationTests: XCTestCase {
 
   // MARK: - Fan Write Tests
 
-  func testSetFanRPM() throws {
+  func testSetFanRPM() {
     let expectation = XCTestExpectation(description: "Set fan RPM")
 
     runCLISet(["set", "0", "4000"]) { output, exitCode in
@@ -239,7 +239,7 @@ final class IntegrationTests: XCTestCase {
 
   /// Exercises the same condition as SMCFanHelper.verifyFanSpeed: actual RPM
   /// reaches target within 10% within 30s after set.
-  func testFanSpeedVerification_ActualReachesTargetWithinTolerance() throws {
+  func testFanSpeedVerification_ActualReachesTargetWithinTolerance() {
     let targetRPM: Float = 4_000
     let tolerance: Float = 0.10
     let timeout: TimeInterval = 30.0
@@ -282,7 +282,7 @@ final class IntegrationTests: XCTestCase {
     )
   }
 
-  func testSetFanAuto() throws {
+  func testSetFanAuto() {
     let expectation = XCTestExpectation(description: "Set fan auto")
 
     runCLI(["auto", "0"]) { output, exitCode in
@@ -296,7 +296,7 @@ final class IntegrationTests: XCTestCase {
 
   // MARK: - Full Cycle Test
 
-  func testFullCycle_SetAndReset() throws {
+  func testFullCycle_SetAndReset() {
     // 1. Get initial state
     let initialExpectation = XCTestExpectation(description: "Initial state")
     runCLI(["list"]) { output, _ in
@@ -335,7 +335,7 @@ final class IntegrationTests: XCTestCase {
 
   // MARK: - Independent Fan Control Tests
 
-  func testIndependentFanControl_SetFan1DoesNotAffectFan0() throws {
+  func testIndependentFanControl_SetFan1DoesNotAffectFan0() {
     // First reset both fans to auto
     runCLI(["auto", "0"]) { _, _ in /* result intentionally ignored */ }
     runCLI(["auto", "1"]) { _, _ in /* result intentionally ignored */ }
@@ -386,7 +386,7 @@ final class IntegrationTests: XCTestCase {
     runCLI(["auto", "1"]) { _, _ in /* result intentionally ignored */ }
   }
 
-  func testIndependentFanControl_BothFansManualDifferentSpeeds() throws {
+  func testIndependentFanControl_BothFansManualDifferentSpeeds() {
     let set0Expectation = XCTestExpectation(description: "Set Fan 0")
     runCLISet(["set", "0", "4000"]) { _, exitCode in
       expect(exitCode) == 0
@@ -433,7 +433,7 @@ final class IntegrationTests: XCTestCase {
     runCLI(["auto", "1"]) { _, _ in /* result intentionally ignored */ }
   }
 
-  func testPartialAutoMode_OneFanAutoOneManual() throws {
+  func testPartialAutoMode_OneFanAutoOneManual() {
     runCLISet(["set", "0", "5000"]) { _, _ in /* result intentionally ignored */ }
     runCLISet(["set", "1", "5000"]) { _, _ in /* result intentionally ignored */ }
     Thread.sleep(forTimeInterval: 2.0)
@@ -471,7 +471,7 @@ final class IntegrationTests: XCTestCase {
     runCLI(["auto", "0"]) { _, _ in /* result intentionally ignored */ }
   }
 
-  func testSystemModeRestoration_AllFansAuto() throws {
+  func testSystemModeRestoration_AllFansAuto() {
     runCLISet(["set", "0", "5000"]) { _, _ in /* result intentionally ignored */ }
     Thread.sleep(forTimeInterval: 2.0)
 
@@ -515,7 +515,7 @@ final class IntegrationTests: XCTestCase {
 
   // MARK: - Edge Case Tests
 
-  func testSetZeroRPM_ManualStop() throws {
+  func testSetZeroRPM_ManualStop() {
     // Setting 0 RPM should stop the fan completely while keeping manual mode
     let setExpectation = XCTestExpectation(description: "Set 0 RPM")
     runCLISet(["set", "0", "0"]) { _, exitCode in
@@ -551,7 +551,7 @@ final class IntegrationTests: XCTestCase {
     Thread.sleep(forTimeInterval: 3.0)
   }
 
-  func testSetBelowMinRPM_Works() throws {
+  func testSetBelowMinRPM_Works() {
     let setExpectation = XCTestExpectation(description: "Set below min")
     runCLISet(["set", "0", "1000"]) { _, exitCode in
       expect(exitCode) == 0
@@ -594,7 +594,7 @@ final class IntegrationTests: XCTestCase {
     Thread.sleep(forTimeInterval: 3.0)
   }
 
-  func testSetAboveMaxRPM_ClampedToHardwareMax() throws {
+  func testSetAboveMaxRPM_ClampedToHardwareMax() {
     let setExpectation = XCTestExpectation(description: "Set above max")
     runCLISet(["set", "0", "10000"]) { _, exitCode in
       expect(exitCode) == 0
@@ -690,7 +690,7 @@ final class IntegrationTests: XCTestCase {
 
   /// Tests state transitions as defined in research/test_transitions.sh
   /// Records transition times and verifies state changes
-  func testTransition_AutoToManual() throws {
+  func testTransition_AutoToManual() {
     // Start from clean auto state
     runCLI(["auto", "0"]) { _, _ in /* result intentionally ignored */ }
     runCLI(["auto", "1"]) { _, _ in /* result intentionally ignored */ }
@@ -726,7 +726,7 @@ final class IntegrationTests: XCTestCase {
     runCLI(["auto", "1"]) { _, _ in /* result intentionally ignored */ }
   }
 
-  func testTransition_BothFansManual() throws {
+  func testTransition_BothFansManual() {
     // Start from clean auto state
     runCLI(["auto", "0"]) { _, _ in /* result intentionally ignored */ }
     runCLI(["auto", "1"]) { _, _ in /* result intentionally ignored */ }
@@ -775,7 +775,7 @@ final class IntegrationTests: XCTestCase {
     runCLI(["auto", "1"]) { _, _ in /* result intentionally ignored */ }
   }
 
-  func testTransition_PartialAuto() throws {
+  func testTransition_PartialAuto() {
     runCLISet(["set", "0", "6000"]) { _, _ in /* result intentionally ignored */ }
     runCLISet(["set", "1", "5000"]) { _, _ in /* result intentionally ignored */ }
     Thread.sleep(forTimeInterval: 3.0)
@@ -813,7 +813,7 @@ final class IntegrationTests: XCTestCase {
     runCLI(["auto", "0"]) { _, _ in /* result intentionally ignored */ }
   }
 
-  func testTransition_SystemModeRestored() throws {
+  func testTransition_SystemModeRestored() {
     runCLISet(["set", "0", "5000"]) { _, _ in /* result intentionally ignored */ }
     Thread.sleep(forTimeInterval: 2.0)
 
@@ -841,7 +841,7 @@ final class IntegrationTests: XCTestCase {
     wait(for: [verifyExpectation], timeout: 10.0)
   }
 
-  func testTransition_ManualToManual_Fast() throws {
+  func testTransition_ManualToManual_Fast() {
     runCLISet(["set", "0", "4000"]) { _, _ in /* result intentionally ignored */ }
     Thread.sleep(forTimeInterval: 2.0)
 
@@ -937,7 +937,7 @@ final class IntegrationTests: XCTestCase {
 
   // MARK: - Error Handling Tests
 
-  func testInvalidFanIndex() throws {
+  func testInvalidFanIndex() {
     let expectation = XCTestExpectation(description: "Invalid fan")
 
     runCLI(["set", "99", "4000"]) { _, exitCode in
