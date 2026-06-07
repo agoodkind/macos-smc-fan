@@ -69,8 +69,8 @@ enum SMCFan {
 
       case "set":
         guard inv.positional.count >= setCommandArgumentCount,
-              let fan = Int(inv.positional[0]),
-              let rpm = Float(inv.positional[1])
+          let fan = Int(inv.positional[0]),
+          let rpm = Float(inv.positional[1])
         else {
           CLIOut.err("Usage: smcfan set <fan> <rpm>")
           exit(1)

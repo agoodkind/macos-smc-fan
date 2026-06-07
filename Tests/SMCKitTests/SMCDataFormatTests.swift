@@ -8,6 +8,7 @@
 
 import Nimble
 import XCTest
+
 @testable import SMCKit
 
 /// Unit tests for SMC data format conversions.
@@ -52,7 +53,8 @@ final class SMCDataFormatTests: XCTestCase {
       var paddedBytes = bytes
       paddedBytes.append(contentsOf: [UInt8](repeating: 0, count: 28))
       let result = SMCDataFormat.float(from: paddedBytes, size: 4)
-      expect(result).to(beCloseTo(value, within: 0.01), description: "Roundtrip failed for \(value)")
+      expect(result).to(
+        beCloseTo(value, within: 0.01), description: "Roundtrip failed for \(value)")
     }
   }
 

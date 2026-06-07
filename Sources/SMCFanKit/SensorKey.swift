@@ -238,7 +238,9 @@ public enum SensorCatalog {
       platformKeys = m3
     } else if model.hasPrefix("Mac13") {
       platformKeys = m2
-    } else if model.hasPrefix("Mac12") || model.hasPrefix("MacBookPro18") || model.hasPrefix("MacBookAir10") {
+    } else if model.hasPrefix("Mac12") || model.hasPrefix("MacBookPro18")
+      || model.hasPrefix("MacBookAir10")
+    {
       platformKeys = m1
     } else {
       platformKeys = []

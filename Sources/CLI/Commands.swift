@@ -77,7 +77,9 @@ enum Commands {
           case .power: unit = "W"
           case .current: unit = "A"
           }
-          CLIOut.print("    \(item.sensor.key) \(item.sensor.name): \(String(format: "%.2f", item.value)) \(unit)")
+          CLIOut.print(
+            "    \(item.sensor.key) \(item.sensor.name): \(String(format: "%.2f", item.value)) \(unit)"
+          )
         }
       }
     }

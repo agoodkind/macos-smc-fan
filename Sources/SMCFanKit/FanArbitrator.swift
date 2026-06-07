@@ -129,9 +129,10 @@ public final class FanArbitrator: @unchecked Sendable {
     let existing = self.fanOwners[fan]
 
     if let state = existing,
-       state.clientID != clientID,
-       now.timeIntervalSince(state.lastWriteAt) < self.ownerTTL,
-       priority < state.priority {
+      state.clientID != clientID,
+      now.timeIntervalSince(state.lastWriteAt) < self.ownerTTL,
+      priority < state.priority
+    {
       self.lock.unlock()
       return .rejected(ownerName: state.clientName, ownerPriority: state.priority)
     }

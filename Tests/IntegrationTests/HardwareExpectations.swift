@@ -128,7 +128,8 @@ extension HardwareExpectations {
       let data = try Data(contentsOf: plistURL)
       return try PropertyListDecoder().decode(HardwareExpectations.self, from: data)
     } catch {
-      fputs("[HardwareExpectations] Failed to decode \(plistURL.lastPathComponent): \(error)\n", stderr)
+      fputs(
+        "[HardwareExpectations] Failed to decode \(plistURL.lastPathComponent): \(error)\n", stderr)
       return nil
     }
   }

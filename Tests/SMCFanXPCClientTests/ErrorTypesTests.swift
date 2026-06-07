@@ -7,6 +7,7 @@
 //
 
 import Testing
+
 @testable import SMCFanXPCClient
 
 @Suite("SMCFanXPCClient error types")

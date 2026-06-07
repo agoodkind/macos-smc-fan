@@ -29,22 +29,22 @@ let package = Package(
     .target(
       name: "AppLog",
       dependencies: [
-        .product(name: "Logging", package: "swift-log"),
+        .product(name: "Logging", package: "swift-log")
       ],
       path: "Sources/AppLog",
       exclude: ["expected-categories.txt"],
       swiftSettings: [
-        .enableUpcomingFeature("StrictConcurrency"),
+        .enableUpcomingFeature("StrictConcurrency")
       ]
     ),
     .target(
       name: "SMCKit",
       dependencies: [
-        "AppLog",
+        "AppLog"
       ],
       path: "Sources/SMCKit",
       swiftSettings: [
-        .enableUpcomingFeature("StrictConcurrency"),
+        .enableUpcomingFeature("StrictConcurrency")
       ]
     ),
     .target(
@@ -55,7 +55,7 @@ let package = Package(
       ],
       path: "Sources/SMCFanKit",
       swiftSettings: [
-        .enableUpcomingFeature("StrictConcurrency"),
+        .enableUpcomingFeature("StrictConcurrency")
       ]
     ),
     .target(
@@ -63,7 +63,7 @@ let package = Package(
       dependencies: [],
       path: "Sources/Common",
       swiftSettings: [
-        .enableUpcomingFeature("StrictConcurrency"),
+        .enableUpcomingFeature("StrictConcurrency")
       ]
     ),
     .target(
@@ -74,7 +74,7 @@ let package = Package(
       ],
       path: "Sources/SMCFanXPCClient",
       swiftSettings: [
-        .enableUpcomingFeature("StrictConcurrency"),
+        .enableUpcomingFeature("StrictConcurrency")
       ]
     ),
     .executableTarget(
@@ -87,7 +87,7 @@ let package = Package(
       ],
       path: "Sources/CLI",
       swiftSettings: [
-        .enableUpcomingFeature("StrictConcurrency"),
+        .enableUpcomingFeature("StrictConcurrency")
       ]
     ),
     .testTarget(
@@ -95,7 +95,7 @@ let package = Package(
       dependencies: ["AppLog"],
       path: "Tests/AppLogTests",
       swiftSettings: [
-        .enableUpcomingFeature("StrictConcurrency"),
+        .enableUpcomingFeature("StrictConcurrency")
       ]
     ),
     .testTarget(
@@ -106,7 +106,7 @@ let package = Package(
       ],
       path: "Tests/SMCKitTests",
       swiftSettings: [
-        .enableUpcomingFeature("StrictConcurrency"),
+        .enableUpcomingFeature("StrictConcurrency")
       ]
     ),
     .testTarget(
@@ -114,7 +114,7 @@ let package = Package(
       dependencies: ["SMCFanKit"],
       path: "Tests/SMCFanKitTests",
       swiftSettings: [
-        .enableUpcomingFeature("StrictConcurrency"),
+        .enableUpcomingFeature("StrictConcurrency")
       ]
     ),
     .testTarget(
@@ -128,7 +128,7 @@ let package = Package(
       path: "Tests/IntegrationTests",
       exclude: ["Fixtures"],
       swiftSettings: [
-        .enableUpcomingFeature("StrictConcurrency"),
+        .enableUpcomingFeature("StrictConcurrency")
       ]
     ),
     .testTarget(
@@ -139,7 +139,7 @@ let package = Package(
       ],
       path: "Tests/SMCFanXPCClientTests",
       swiftSettings: [
-        .enableUpcomingFeature("StrictConcurrency"),
+        .enableUpcomingFeature("StrictConcurrency")
       ]
     ),
   ]

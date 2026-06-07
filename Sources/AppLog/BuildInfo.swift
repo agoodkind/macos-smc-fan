@@ -12,15 +12,15 @@ import CryptoKit
 import Foundation
 
 public enum BuildInfo {
-    nonisolated(unsafe) public static var commit = "unknown"
-    nonisolated(unsafe) public static var version = "dev"
-    nonisolated(unsafe) public static var dirty = "false"
+  nonisolated(unsafe) public static var commit = "unknown"
+  nonisolated(unsafe) public static var version = "dev"
+  nonisolated(unsafe) public static var dirty = "false"
 
-    public static func buildHash() -> String {
-        guard let exe = Bundle.main.executableURL,
-            let data = try? Data(contentsOf: exe)
-        else { return "unknown" }
-        let digest = SHA256.hash(data: data)
-        return digest.prefix(6).map { String(format: "%02x", $0) }.joined()
-    }
+  public static func buildHash() -> String {
+    guard let exe = Bundle.main.executableURL,
+      let data = try? Data(contentsOf: exe)
+    else { return "unknown" }
+    let digest = SHA256.hash(data: data)
+    return digest.prefix(6).map { String(format: "%02x", $0) }.joined()
+  }
 }

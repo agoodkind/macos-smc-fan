@@ -11,14 +11,14 @@ import Foundation
 
 @main
 enum SMCFanHelperMain {
-    static func main() {
-        AppLog.bootstrap(subsystem: "io.goodkind.fan")
-        BuildInfo.commit = generatedGitCommit
-        BuildInfo.version = generatedGitVersion
-        BuildInfo.dirty = generatedGitDirty
-        autoreleasepool {
-            let helper = SMCFanHelper()
-            helper.start()
-        }
+  static func main() {
+    AppLog.bootstrap(subsystem: "io.goodkind.fan")
+    BuildInfo.commit = generatedGitCommit
+    BuildInfo.version = generatedGitVersion
+    BuildInfo.dirty = generatedGitDirty
+    autoreleasepool {
+      let helper = SMCFanHelper()
+      helper.start()
     }
+  }
 }

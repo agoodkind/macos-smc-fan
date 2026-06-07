@@ -9,8 +9,9 @@
 //  continuation safety depends on this invariant.
 //
 
-import Testing
 import Foundation
+import Testing
+
 @testable import SMCFanXPCClient
 
 @Suite("ResumeGuard")

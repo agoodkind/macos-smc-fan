@@ -128,7 +128,9 @@ public final class SMCFanXPCClient: @unchecked Sendable {
     /// snapshot time.
     public let secondsSinceLastWrite: TimeInterval
 
-    public init(fanIndex: UInt, clientName: String, priority: Int, secondsSinceLastWrite: TimeInterval) {
+    public init(
+      fanIndex: UInt, clientName: String, priority: Int, secondsSinceLastWrite: TimeInterval
+    ) {
       self.fanIndex = fanIndex
       self.clientName = clientName
       self.priority = priority
@@ -424,7 +426,11 @@ public final class SMCFanXPCClient: @unchecked Sendable {
       }
       typedProxy.smcRegisterClient(name: name) { success, message in
         once.tryResume {
-          if success { continuation.resume() } else { continuation.resume(throwing: SMCXPCError(message)) }
+          if success {
+            continuation.resume()
+          } else {
+            continuation.resume(throwing: SMCXPCError(message))
+          }
         }
       }
     }
@@ -465,10 +471,11 @@ public final class SMCFanXPCClient: @unchecked Sendable {
   // MARK: - Async helpers
 
   private func call<T: Sendable>(
-    _ block: @escaping (
-      SMCFanHelperProtocol,
-      @escaping @Sendable (Bool, T, String?) -> Void
-    ) -> Void
+    _ block:
+      @escaping (
+        SMCFanHelperProtocol,
+        @escaping @Sendable (Bool, T, String?) -> Void
+      ) -> Void
   ) async throws -> T {
     let conn = self.ensureConnection()
     return try await withCheckedThrowingContinuation { continuation in
@@ -502,10 +509,11 @@ public final class SMCFanXPCClient: @unchecked Sendable {
   private func callVoid(
     skipEnsureOpen: Bool = false,
     skipEnsureRegistered: Bool = false,
-    _ block: @escaping (
-      SMCFanHelperProtocol,
-      @escaping @Sendable (Bool, String?) -> Void
-    ) -> Void
+    _ block:
+      @escaping (
+        SMCFanHelperProtocol,
+        @escaping @Sendable (Bool, String?) -> Void
+      ) -> Void
   ) async throws {
     if !skipEnsureOpen {
       try await self.ensureOpened()
@@ -532,7 +540,11 @@ public final class SMCFanXPCClient: @unchecked Sendable {
       }
       block(typedProxy) { success, error in
         once.tryResume {
-          if success { continuation.resume() } else { continuation.resume(throwing: SMCXPCError(error)) }
+          if success {
+            continuation.resume()
+          } else {
+            continuation.resume(throwing: SMCXPCError(error))
+          }
         }
       }
     }
@@ -543,10 +555,11 @@ public final class SMCFanXPCClient: @unchecked Sendable {
   /// `SMCXPCConflictError`.
   private func callArbitrated(
     opLabel: String,
-    _ block: @escaping (
-      SMCFanHelperProtocol,
-      @escaping @Sendable (Bool, Bool, String?) -> Void
-    ) -> Void
+    _ block:
+      @escaping (
+        SMCFanHelperProtocol,
+        @escaping @Sendable (Bool, Bool, String?) -> Void
+      ) -> Void
   ) async throws {
     let conn = self.ensureConnection()
     try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in

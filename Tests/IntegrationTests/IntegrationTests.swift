@@ -140,7 +140,8 @@ final class IntegrationTests: XCTestCase {
     let modeReadable = lowerResult.exitCode == 0 || upperResult.exitCode == 0
     expect(modeReadable).to(
       beTrue(),
-      description: "Neither F0md nor F0Md readable. Lower: exit=\(lowerResult.exitCode) [\(lowerResult.output.trimmingCharacters(in: .whitespacesAndNewlines))], Upper: exit=\(upperResult.exitCode) [\(upperResult.output.trimmingCharacters(in: .whitespacesAndNewlines))]"
+      description:
+        "Neither F0md nor F0Md readable. Lower: exit=\(lowerResult.exitCode) [\(lowerResult.output.trimmingCharacters(in: .whitespacesAndNewlines))], Upper: exit=\(upperResult.exitCode) [\(upperResult.output.trimmingCharacters(in: .whitespacesAndNewlines))]"
     )
   }
 
@@ -514,13 +515,16 @@ final class IntegrationTests: XCTestCase {
       case .minRPM:
         expect(output.contains("Target: \(expectations.reportedMinRPM)")).to(
           beTrue(),
-          description: "[\(expectations.chipName)] Target should be \(expectations.reportedMinRPM) (thermalmonitord)")
+          description:
+            "[\(expectations.chipName)] Target should be \(expectations.reportedMinRPM) (thermalmonitord)"
+        )
       case .zeroOrMinRPM:
         let hasZero = output.contains("Target: 0")
         let hasMin = output.contains("Target: \(expectations.reportedMinRPM)")
         expect(hasZero || hasMin).to(
           beTrue(),
-          description: "[\(expectations.chipName)] Target should be 0 or \(expectations.reportedMinRPM)")
+          description:
+            "[\(expectations.chipName)] Target should be 0 or \(expectations.reportedMinRPM)")
       }
       verifyExpectation.fulfill()
     }
@@ -586,7 +590,9 @@ final class IntegrationTests: XCTestCase {
         case .clampedToMin:
           expect(line.contains("Target: \(expectations.reportedMinRPM)")).to(
             beTrue(),
-            description: "[\(expectations.chipName)] Target should be clamped to min (\(expectations.reportedMinRPM))")
+            description:
+              "[\(expectations.chipName)] Target should be clamped to min (\(expectations.reportedMinRPM))"
+          )
         }
         if let match = line.range(of: "Fan 0: (\\d+) RPM", options: .regularExpression) {
           let rpmStr = String(line[match])
@@ -732,7 +738,8 @@ final class IntegrationTests: XCTestCase {
       let lines = output.components(separatedBy: "\n")
       for line in lines where line.contains("Fan 1:") {
         expect(line.contains("Mode: Manual")).to(beTrue(), description: "Fan 1 should be Manual")
-        expect(line.contains("Target: 5000")).to(beTrue(), description: "Fan 1 target should be 5000")
+        expect(line.contains("Target: 5000")).to(
+          beTrue(), description: "Fan 1 target should be 5000")
       }
       verifyExpectation.fulfill()
     }
@@ -775,11 +782,13 @@ final class IntegrationTests: XCTestCase {
       for line in lines {
         if line.contains("Fan 0:") {
           expect(line.contains("Mode: Manual")).to(beTrue(), description: "Fan 0 should be Manual")
-          expect(line.contains("Target: 6000")).to(beTrue(), description: "Fan 0 target should be 6000")
+          expect(line.contains("Target: 6000")).to(
+            beTrue(), description: "Fan 0 target should be 6000")
         }
         if line.contains("Fan 1:") {
           expect(line.contains("Mode: Manual")).to(beTrue(), description: "Fan 1 should be Manual")
-          expect(line.contains("Target: 5000")).to(beTrue(), description: "Fan 1 target should be 5000")
+          expect(line.contains("Target: 5000")).to(
+            beTrue(), description: "Fan 1 target should be 5000")
         }
       }
       verifyExpectation.fulfill()
@@ -815,7 +824,8 @@ final class IntegrationTests: XCTestCase {
       let lines = output.components(separatedBy: "\n")
       for line in lines {
         if line.contains("Fan 0:") {
-          expect(line.contains("Mode: Manual")).to(beTrue(), description: "Fan 0 should still be Manual")
+          expect(line.contains("Mode: Manual")).to(
+            beTrue(), description: "Fan 0 should still be Manual")
         }
         if line.contains("Fan 1:") {
           expect(line.contains("Mode: Auto")).to(beTrue(), description: "Fan 1 should be Auto")
@@ -934,7 +944,8 @@ final class IntegrationTests: XCTestCase {
       semaphore.wait()
 
       let modesMatch = currentModes == previousModes
-      let rpmsClose = currentRPMs.count == previousRPMs.count
+      let rpmsClose =
+        currentRPMs.count == previousRPMs.count
         && zip(currentRPMs, previousRPMs).allSatisfy { abs($0 - $1) <= tolerance }
 
       if modesMatch, rpmsClose {
@@ -1033,7 +1044,8 @@ final class IntegrationTests: XCTestCase {
 
   private static var cliPath: String {
     let fileURL = URL(fileURLWithPath: #filePath)
-    let repoRoot = fileURL
+    let repoRoot =
+      fileURL
       .deletingLastPathComponent()  // IntegrationTests.swift -> IntegrationTests/
       .deletingLastPathComponent()  // IntegrationTests/ -> Tests/
       .deletingLastPathComponent()  // Tests/ -> repo root

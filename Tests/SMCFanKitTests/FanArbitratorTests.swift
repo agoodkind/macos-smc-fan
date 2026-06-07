@@ -11,6 +11,7 @@
 
 import Foundation
 import Testing
+
 @testable import SMCFanKit
 
 @Suite("FanArbitrator")
@@ -56,7 +57,7 @@ struct FanArbitratorTests {
     arbitrator.registerClientName("other", for: otherID)
     _ = arbitrator.decideClaim(fan: 0, priority: 50, clientID: ownerID)
     let result = arbitrator.decideClaim(fan: 0, priority: 10, clientID: otherID)
-    guard case let .rejected(name, priority) = result else {
+    guard case .rejected(let name, let priority) = result else {
       Issue.record("expected rejection")
       return
     }
@@ -100,9 +101,11 @@ struct FanArbitratorTests {
     arbitrator.registerClientName("other", for: otherID)
     let t0 = Date()
     _ = arbitrator.decideClaim(fan: 0, priority: 50, clientID: ownerID, now: t0)
-    let beforeTTL = arbitrator.decideClaim(fan: 0, priority: 10, clientID: otherID, now: t0.addingTimeInterval(9))
+    let beforeTTL = arbitrator.decideClaim(
+      fan: 0, priority: 10, clientID: otherID, now: t0.addingTimeInterval(9))
     if case .accepted = beforeTTL { Issue.record("should still be rejected within TTL") }
-    let afterTTL = arbitrator.decideClaim(fan: 0, priority: 10, clientID: otherID, now: t0.addingTimeInterval(11))
+    let afterTTL = arbitrator.decideClaim(
+      fan: 0, priority: 10, clientID: otherID, now: t0.addingTimeInterval(11))
     if case .rejected = afterTTL { Issue.record("should be accepted after TTL lapse") }
   }
 
