@@ -9,10 +9,13 @@ SMCD_BUNDLE_ID = io.goodkind.smcd
 # swift-mk consumer wiring. swift-mk owns build-time code signing through its
 # XCODE_XCCONFIG_FILE override, fed by CODE_SIGN_IDENTITY / DEVELOPMENT_TEAM from
 # Config/local.xcconfig, so neither project.yml nor this Makefile sets signing.
+# Generation and the build route through the swift-mk `toolchain` chokepoint so no
+# consumer file names xcodegen or xcodebuild directly. Deferred `=` because
+# SWIFT_MK_BIN is set by swift.mk, included via bootstrap.mk below.
 SWIFT_MK_MODULES := swift-build.mk
 SWIFT_MK_OWN_RUN := 1
 SWIFT_MK_DERIVED_DATA := $(BUILD_DIR)
-SWIFT_GENERATE_CMD := xcodegen generate
+SWIFT_GENERATE_CMD = "$(SWIFT_MK_BIN)" toolchain generate --generator xcodegen
 SWIFT_BUILD_CMD := $(MAKE) SWIFT_MK_SKIP_FETCH=1 build-local
 SWIFT_CLEAN_CMD := rm -rf $(BUILD_DIR) $(PRODUCTS_DIR) SMCFanApp.xcodeproj
 SWIFT_TEST_CMD := swift test
@@ -31,23 +34,24 @@ include bootstrap.mk
 # directly depend on (e.g. macos-fan-curve's helper-artifacts), independent of the
 # swift-mk `generate` target.
 generate-project:
-	xcodegen generate
+	"$(SWIFT_MK_BIN)" toolchain generate --generator xcodegen
 
-# The Xcode app/helper build, run by swift-mk's `build` after the signing prelude
-# exports XCODE_XCCONFIG_FILE, so both schemes sign with the swift-mk identity.
+# The Xcode app/helper build, routed through the swift-mk `toolchain` chokepoint so
+# this file never names xcodebuild. Run by swift-mk's `build` after the signing
+# prelude exports XCODE_XCCONFIG_FILE, so both schemes sign with the swift-mk identity.
 build-local: generate
-	xcodebuild -project SMCFanApp.xcodeproj \
-		-scheme SMCFanHelper \
-		-configuration $(CONFIGURATION) \
-		-derivedDataPath $(BUILD_DIR) \
-		ONLY_ACTIVE_ARCH=YES \
-		build
-	xcodebuild -project SMCFanApp.xcodeproj \
-		-scheme smcfan \
-		-configuration $(CONFIGURATION) \
-		-derivedDataPath $(BUILD_DIR) \
-		ONLY_ACTIVE_ARCH=YES \
-		build
+	"$(SWIFT_MK_BIN)" toolchain build --generator xcodegen \
+		--project SMCFanApp.xcodeproj \
+		--scheme SMCFanHelper \
+		--configuration $(CONFIGURATION) \
+		--derived-data-path $(BUILD_DIR) \
+		ONLY_ACTIVE_ARCH=YES
+	"$(SWIFT_MK_BIN)" toolchain build --generator xcodegen \
+		--project SMCFanApp.xcodeproj \
+		--scheme smcfan \
+		--configuration $(CONFIGURATION) \
+		--derived-data-path $(BUILD_DIR) \
+		ONLY_ACTIVE_ARCH=YES
 	@mkdir -p $(PRODUCTS_DIR)
 	@cp -R "$(BUILD_DIR)/Build/Products/$(CONFIGURATION)/SMCFanHelper.app" "$(PRODUCTS_DIR)/"
 	@cp "$(BUILD_DIR)/Build/Products/$(CONFIGURATION)/smcfan" "$(PRODUCTS_DIR)/"
