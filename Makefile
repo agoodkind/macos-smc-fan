@@ -15,7 +15,8 @@ SMCD_BUNDLE_ID = io.goodkind.smcd
 SWIFT_MK_MODULES := swift-build.mk
 SWIFT_MK_OWN_RUN := 1
 SWIFT_MK_DERIVED_DATA := $(BUILD_DIR)
-SWIFT_GENERATE_CMD = "$(SWIFT_MK_BIN)" toolchain generate --generator xcodegen
+SMC_GENERATOR := xcodegen
+SWIFT_GENERATE_CMD = "$(SWIFT_MK_BIN)" toolchain generate --generator $(SMC_GENERATOR)
 SWIFT_BUILD_CMD := $(MAKE) SWIFT_MK_SKIP_FETCH=1 build-local
 SWIFT_CLEAN_CMD := rm -rf $(BUILD_DIR) $(PRODUCTS_DIR) SMCFanApp.xcodeproj
 SWIFT_TEST_CMD := swift test
@@ -34,19 +35,19 @@ include bootstrap.mk
 # directly depend on (e.g. macos-fan-curve's helper-artifacts), independent of the
 # swift-mk `generate` target.
 generate-project:
-	"$(SWIFT_MK_BIN)" toolchain generate --generator xcodegen
+	"$(SWIFT_MK_BIN)" toolchain generate --generator $(SMC_GENERATOR)
 
 # The Xcode app/helper build, routed through the swift-mk `toolchain` chokepoint so
 # this file never names xcodebuild. Run by swift-mk's `build` after the signing
 # prelude exports XCODE_XCCONFIG_FILE, so both schemes sign with the swift-mk identity.
 build-local: generate
-	"$(SWIFT_MK_BIN)" toolchain build --generator xcodegen \
+	"$(SWIFT_MK_BIN)" toolchain build --generator $(SMC_GENERATOR) \
 		--project SMCFanApp.xcodeproj \
 		--scheme SMCFanHelper \
 		--configuration $(CONFIGURATION) \
 		--derived-data-path $(BUILD_DIR) \
 		ONLY_ACTIVE_ARCH=YES
-	"$(SWIFT_MK_BIN)" toolchain build --generator xcodegen \
+	"$(SWIFT_MK_BIN)" toolchain build --generator $(SMC_GENERATOR) \
 		--project SMCFanApp.xcodeproj \
 		--scheme smcfan \
 		--configuration $(CONFIGURATION) \

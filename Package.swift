@@ -18,6 +18,7 @@ let package = Package(
     .library(name: "AppLog", targets: ["AppLog"]),
     .library(name: "SMCFanProtocol", targets: ["SMCFanProtocol"]),
     .library(name: "SMCFanXPCClient", targets: ["SMCFanXPCClient"]),
+    .library(name: "SMCFanHelperCore", targets: ["SMCFanHelperCore"]),
     .executable(name: "smcfan", targets: ["smcfan"]),
   ],
   dependencies: [
@@ -86,6 +87,20 @@ let package = Package(
         "SMCFanXPCClient",
       ],
       path: "Sources/CLI",
+      swiftSettings: [
+        .enableUpcomingFeature("StrictConcurrency")
+      ]
+    ),
+    .target(
+      name: "SMCFanHelperCore",
+      dependencies: [
+        "AppLog",
+        "SMCKit",
+        "SMCFanKit",
+        "SMCFanProtocol",
+      ],
+      path: "Sources/Helper",
+      exclude: ["SMCFanHelperMain.swift"],
       swiftSettings: [
         .enableUpcomingFeature("StrictConcurrency")
       ]

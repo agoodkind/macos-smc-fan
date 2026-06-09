@@ -10,12 +10,16 @@ import AppLog
 import Foundation
 import IOKit
 import SMCFanKit
+import SMCFanProtocol
 import SMCKit
 
 private let log = AppLog.make(category: "Helper")
 
-class SMCFanHelper: NSObject, NSXPCListenerDelegate, SMCFanHelperProtocol, @unchecked Sendable {
+public final class SMCFanHelper: NSObject, NSXPCListenerDelegate, SMCFanHelperProtocol,
+  @unchecked Sendable
+{
   private let listener: NSXPCListener
+  private let machServiceName: String
   private var fanController: FanController?
   private let fanVerifyLock = NSLock()
   private var fanVerifyTasks: [UInt: Task<Void, Never>] = [:]
@@ -31,23 +35,22 @@ class SMCFanHelper: NSObject, NSXPCListenerDelegate, SMCFanHelperProtocol, @unch
     return ObjectIdentifier(conn)
   }
 
-  override init() {
-    let config = SMCFanConfiguration.default
-    listener = NSXPCListener(machServiceName: config.helperBundleID)
+  public init(machServiceName: String) {
+    self.machServiceName = machServiceName
+    listener = NSXPCListener(machServiceName: machServiceName)
     super.init()
     listener.delegate = self
   }
 
-  func start() {
+  public func start() {
     listener.resume()
-    log.notice(
-      "helper.started bundleID=\(SMCFanConfiguration.default.helperBundleID, privacy: .public)")
+    log.notice("helper.started bundleID=\(machServiceName, privacy: .public)")
     RunLoop.current.run()
   }
 
   // MARK: - NSXPCListenerDelegate
 
-  func listener(
+  public func listener(
     _: NSXPCListener,
     shouldAcceptNewConnection newConnection: NSXPCConnection
   ) -> Bool {
@@ -84,7 +87,7 @@ class SMCFanHelper: NSObject, NSXPCListenerDelegate, SMCFanHelperProtocol, @unch
 
   // MARK: - SMCFanHelperProtocol
 
-  func smcOpen(reply: (Bool, String?) -> Void) {
+  public func smcOpen(reply: (Bool, String?) -> Void) {
     do {
       try ensureConnected()
       reply(true, nil)
@@ -94,13 +97,13 @@ class SMCFanHelper: NSObject, NSXPCListenerDelegate, SMCFanHelperProtocol, @unch
     }
   }
 
-  func smcClose(reply: (Bool, String?) -> Void) {
+  public func smcClose(reply: (Bool, String?) -> Void) {
     fanController = nil
     log.debug("smc.connection.released")
     reply(true, nil)
   }
 
-  func smcReadKey(_ key: String, reply: (Bool, Float, String?) -> Void) {
+  public func smcReadKey(_ key: String, reply: (Bool, Float, String?) -> Void) {
     do {
       try ensureConnected()
       guard let fanController else {
@@ -121,7 +124,7 @@ class SMCFanHelper: NSObject, NSXPCListenerDelegate, SMCFanHelperProtocol, @unch
     }
   }
 
-  func smcWriteKey(_ key: String, value: Float, reply: (Bool, String?) -> Void) {
+  public func smcWriteKey(_ key: String, value: Float, reply: (Bool, String?) -> Void) {
     do {
       try ensureConnected()
       guard let fanController else {
@@ -143,7 +146,7 @@ class SMCFanHelper: NSObject, NSXPCListenerDelegate, SMCFanHelperProtocol, @unch
     }
   }
 
-  func smcGetFanCount(reply: (Bool, UInt, String?) -> Void) {
+  public func smcGetFanCount(reply: (Bool, UInt, String?) -> Void) {
     do {
       try ensureConnected()
       guard let fanController else {
@@ -160,7 +163,7 @@ class SMCFanHelper: NSObject, NSXPCListenerDelegate, SMCFanHelperProtocol, @unch
     }
   }
 
-  func smcGetFanInfo(
+  public func smcGetFanInfo(
     _ fanIndex: UInt,
     reply: (Bool, Float, Float, Float, Float, Bool, String?) -> Void
   ) {
@@ -211,7 +214,7 @@ class SMCFanHelper: NSObject, NSXPCListenerDelegate, SMCFanHelperProtocol, @unch
     }
   }
 
-  func smcSetFanRPM(
+  public func smcSetFanRPM(
     _ fanIndex: UInt,
     rpm: Float,
     priority: Int,
@@ -351,7 +354,7 @@ class SMCFanHelper: NSObject, NSXPCListenerDelegate, SMCFanHelperProtocol, @unch
     }
   }
 
-  func smcSetFanAuto(
+  public func smcSetFanAuto(
     _ fanIndex: UInt,
     priority: Int,
     reply: (Bool, Bool, String?) -> Void
@@ -460,7 +463,7 @@ class SMCFanHelper: NSObject, NSXPCListenerDelegate, SMCFanHelperProtocol, @unch
 
   // MARK: - Arbitration surface
 
-  func smcRegisterClient(name: String, reply: (Bool, String?) -> Void) {
+  public func smcRegisterClient(name: String, reply: (Bool, String?) -> Void) {
     guard let clientID = self.callerID else {
       reply(false, "No XPC connection context")
       return
@@ -472,7 +475,7 @@ class SMCFanHelper: NSObject, NSXPCListenerDelegate, SMCFanHelperProtocol, @unch
     reply(true, nil)
   }
 
-  func smcGetOwnership(
+  public func smcGetOwnership(
     reply: ([UInt], [String], [Int], [Double]) -> Void
   ) {
     let rows = arbitrator.getOwnershipSnapshot()
@@ -484,7 +487,7 @@ class SMCFanHelper: NSObject, NSXPCListenerDelegate, SMCFanHelperProtocol, @unch
     )
   }
 
-  func smcEnumerateKeys(reply: @escaping ([String]) -> Void) {
+  public func smcEnumerateKeys(reply: @escaping ([String]) -> Void) {
     DispatchQueue.global(qos: .userInitiated).async {
       do {
         try self.ensureConnected()

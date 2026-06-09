@@ -8,6 +8,7 @@
 
 import AppLog
 import Foundation
+import SMCFanHelperCore
 
 @main
 enum SMCFanHelperMain {
@@ -17,7 +18,7 @@ enum SMCFanHelperMain {
     BuildInfo.version = generatedGitVersion
     BuildInfo.dirty = generatedGitDirty
     autoreleasepool {
-      let helper = SMCFanHelper()
+      let helper = SMCFanHelper(machServiceName: SMCFanConfiguration.default.helperBundleID)
       helper.start()
     }
   }

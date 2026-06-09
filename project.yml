@@ -85,6 +85,8 @@ targets:
       - CommonConfig
     sources:
       - path: Sources/Helper
+        excludes:
+          - "SMCFanHelper.swift"
       - path: Sources/Common
         excludes:
           - "Config.generated.swift"
@@ -93,6 +95,8 @@ targets:
         buildPhase: sources
         type: file
     dependencies:
+      - package: SMCFan
+        product: SMCFanHelperCore
       - package: SMCFan
         product: SMCFanKit
       - package: SMCFan
