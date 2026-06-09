@@ -24,7 +24,7 @@ let package = Package(
   dependencies: [
     .package(url: "https://github.com/apple/swift-log.git", from: "1.6.0"),
     .package(url: "https://github.com/Quick/Quick.git", from: "7.0.0"),
-    .package(url: "https://github.com/Quick/Nimble.git", from: "13.0.0"),
+    .package(url: "https://github.com/Quick/Nimble.git", from: "14.0.0"),
   ],
   targets: [
     .target(
