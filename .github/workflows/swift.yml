@@ -1,4 +1,4 @@
-name: Swift
+name: CI
 
 on:
   push:
@@ -6,71 +6,64 @@ on:
   pull_request:
     branches: [main]
 
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  XCODE_VERSION: "latest-stable"
+  APPLE_TEAM_ID: H3BMXM4W7H
+  APPLE_CODE_SIGN_IDENTITY: "Developer ID Application: Alex Goodkind (H3BMXM4W7H)"
+  # The swift-makefile bootstrap fetches swift.mk via `gh api` on every make
+  # invocation; without a token gh fails and the fetch writes an empty swift.mk.
+  GH_TOKEN: ${{ github.token }}
+
 jobs:
   build:
     runs-on: macos-latest
-
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v6
-
-      - name: Select Xcode version
-        run: sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
-
-      - name: Build Swift Package
-        env:
-          HELPER_BUNDLE_ID: io.goodkind.smcfanhelper
-        run: swift build -v
-
-      - name: Verify package structure
-        run: swift package describe
-
-      - name: Run unit tests
-        env:
-          HELPER_BUNDLE_ID: io.goodkind.smcfanhelper
-        run: swift test --filter DataConversionTests
-
-      - name: Run tests with code coverage
-        env:
-          HELPER_BUNDLE_ID: io.goodkind.smcfanhelper
-        run: swift test --enable-code-coverage --filter DataConversionTests
-
-      - name: Report code coverage
-        run: |
-          COVDIR="$(find .build -type d -name codecov 2>/dev/null | head -1)"
-          if [[ -n "$COVDIR" ]]; then
-            PROFDATA="$COVDIR/default.profdata"
-            XCTEST="$(find .build -name "SMCFanTests.xctest" -type d 2>/dev/null | head -1)"
-            if [[ -f "$PROFDATA" && -d "$XCTEST" ]]; then
-              xcrun llvm-cov report "$XCTEST/Contents/MacOS/SMCFanTests" \
-                -instr-profile="$PROFDATA" -ignore-filename-regex='.build|Tests/' || true
-            fi
-            if [[ -f "$COVDIR/SMCFan.json" ]]; then
-              echo "Coverage export: $COVDIR/SMCFan.json"
-            fi
-          fi
-
-      - name: Check for build warnings
-        run: |
-          swift build 2>&1 | grep -i "warning" || echo "No warnings"
-
-  # swift-mk shared gates, now that macos-smc-fan is a swift-mk consumer. Signing
-  # for the dead-code coverage build is ad-hoc in CI (no cert), supplied through
-  # swift-mk's override via CODE_SIGN_IDENTITY=-. Requires the seeded swift-mk
-  # baselines to be committed.
-  swift-mk-gates:
-    runs-on: macos-latest
-    steps:
-      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
 
       - uses: agoodkind/swift-makefile/.github/actions/setup-build-env@main
         with:
-          xcode-version: "latest-stable"
+          xcode-version: ${{ env.XCODE_VERSION }}
           github-token: ${{ github.token }}
 
-      - name: Install lint tools
-        run: brew install xcodegen swiftlint swift-format peripheryapp/periphery/periphery
+      # The privileged LaunchDaemon helper requires a real Developer ID
+      # signature to register via SMAppService, so CI signs with the real
+      # identity (not ad-hoc) the same way the release path does.
+      - name: Install signing certificate
+        id: signing_cert
+        uses: agoodkind/swift-makefile/.github/actions/import-signing-cert@main
+        with:
+          p12-base64: ${{ secrets.APPLE_DEVELOPER_ID_P12_BASE64 }}
+          p12-password: ${{ secrets.APPLE_DEVELOPER_ID_P12_PASSWORD }}
+          identity-name: ${{ env.APPLE_CODE_SIGN_IDENTITY }}
 
-      - name: Run swift-mk gates
+      - name: Write CI xcconfig
         env:
-          CODE_SIGN_IDENTITY: "-"
+          CODE_SIGN_IDENTITY: ${{ steps.signing_cert.outputs.identity-sha1 }}
+          DEVELOPMENT_TEAM: ${{ env.APPLE_TEAM_ID }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > Config/local.xcconfig <<EOF
+          CODE_SIGN_IDENTITY = ${CODE_SIGN_IDENTITY}
+          DEVELOPMENT_TEAM = ${DEVELOPMENT_TEAM}
+          BUNDLE_ID_PREFIX = io.goodkind
+          HELPER_BUNDLE_ID = io.goodkind.smcfanhelper
+          APP_BUNDLE_ID = io.goodkind.SMCFanHelper
+          EOF
+
+      - name: Lint (swift-mk gates)
         run: make lint
+
+      - name: Build signed helper
+        run: make build
+
+      - name: Unit tests
+        run: make test
