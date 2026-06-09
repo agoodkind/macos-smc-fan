@@ -1,3 +1,3 @@
-# periphery: generated_at=2026-06-06T23:28:45Z
-Sources/SMCFanKit/SMCFanKey.swift:10:1: warning: Unused imported module 'SMCKit'	# periphery:first_added=2026-06-06T23:28:45Z last_seen=2026-06-06T23:28:45Z
-Tests/SMCFanKitTests/SMCFanKitTests.swift:10:1: warning: Unused imported module 'SMCFanKit'	# periphery:first_added=2026-06-06T23:28:45Z last_seen=2026-06-06T23:28:45Z
+# periphery: generated_at=2026-06-09T04:20:16Z
+Sources/SMCFanKit/SMCFanKey.swift:10:1: warning: Unused imported module 'SMCKit'	# periphery:first_added=2026-06-06T23:28:45Z last_seen=2026-06-09T04:20:16Z
+Tests/SMCFanKitTests/SMCFanKitTests.swift:11:1: warning: Unused imported module 'SMCFanKit'	# periphery:first_added=2026-06-06T23:28:45Z last_seen=2026-06-09T04:20:16Z
