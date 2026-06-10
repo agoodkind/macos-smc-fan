@@ -6,129 +6,19 @@ on:
       - "[0-9]+.[0-9]+.[0-9]+"
   workflow_dispatch:
 
-concurrency:
-  group: release
-  cancel-in-progress: false
-
-env:
-  XCODE_VERSION: "latest-stable"
-  APPLE_TEAM_ID: H3BMXM4W7H
-  APPLE_CODE_SIGN_IDENTITY: "Developer ID Application: Alex Goodkind (H3BMXM4W7H)"
-  APPLE_NOTARY_KEY_ID: JHC8GR65Q3
-  GH_TOKEN: ${{ github.token }}
+# The caller must grant every permission the called workflow's jobs request.
+permissions:
+  contents: write
+  id-token: write
+  attestations: write
+  artifact-metadata: write
 
 jobs:
-  build:
-    runs-on: macos-latest
-    permissions:
-      contents: read
-    outputs:
-      tag: ${{ steps.meta.outputs.tag }}
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          fetch-depth: 0
-
-      - uses: agoodkind/swift-makefile/.github/actions/setup-build-env@main
-        with:
-          xcode-version: ${{ env.XCODE_VERSION }}
-          github-token: ${{ github.token }}
-
-      - name: Compute release tag
-        id: meta
-        shell: bash
-        run: |
-          set -euo pipefail
-          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
-            tag="${GITHUB_REF_NAME}"
-          else
-            tag="0.0.0-$(date -u +%Y%m%d%H%M)-$(git rev-parse --short HEAD)"
-          fi
-          printf 'tag=%s\n' "$tag" >> "$GITHUB_OUTPUT"
-
-      - name: Install signing certificate
-        id: signing_cert
-        uses: agoodkind/swift-makefile/.github/actions/import-signing-cert@main
-        with:
-          p12-base64: ${{ secrets.APPLE_DEVELOPER_ID_P12_BASE64 }}
-          p12-password: ${{ secrets.APPLE_DEVELOPER_ID_P12_PASSWORD }}
-          identity-name: ${{ env.APPLE_CODE_SIGN_IDENTITY }}
-
-      - name: Write CI xcconfig
-        env:
-          CODE_SIGN_IDENTITY: ${{ steps.signing_cert.outputs.identity-sha1 }}
-          DEVELOPMENT_TEAM: ${{ env.APPLE_TEAM_ID }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          cat > Config/local.xcconfig <<EOF
-          CODE_SIGN_IDENTITY = ${CODE_SIGN_IDENTITY}
-          DEVELOPMENT_TEAM = ${DEVELOPMENT_TEAM}
-          BUNDLE_ID_PREFIX = io.goodkind
-          HELPER_BUNDLE_ID = io.goodkind.smcfanhelper
-          APP_BUNDLE_ID = io.goodkind.SMCFanHelper
-          EOF
-
-      - name: Build signed helper
-        run: make build
-
-      - name: Zip helper app for notarization
-        shell: bash
-        run: |
-          set -euo pipefail
-          ditto -c -k --keepParent "Products/SMCFanHelper.app" "Products/SMCFanHelper-${{ steps.meta.outputs.tag }}.zip"
-
-      - uses: actions/upload-artifact@v7
-        with:
-          name: helper-zip-${{ steps.meta.outputs.tag }}
-          path: Products/SMCFanHelper-${{ steps.meta.outputs.tag }}.zip
-          if-no-files-found: error
-
-  notarize:
-    runs-on: macos-latest
-    needs: build
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/download-artifact@v8
-        with:
-          name: helper-zip-${{ needs.build.outputs.tag }}
-          path: Products
-
-      - name: Notarize and staple helper
-        uses: agoodkind/swift-makefile/.github/actions/notarize-staple@main
-        with:
-          artifact-path: Products/SMCFanHelper-${{ needs.build.outputs.tag }}.zip
-          notary-key-base64: ${{ secrets.APPLE_NOTARY_KEY_BASE64 }}
-          notary-key-id: ${{ env.APPLE_NOTARY_KEY_ID }}
-          notary-issuer-id: ${{ secrets.APPLE_NOTARY_ISSUER_ID }}
-
-      - uses: actions/upload-artifact@v7
-        with:
-          name: helper-zip-notarized-${{ needs.build.outputs.tag }}
-          path: Products/SMCFanHelper-${{ needs.build.outputs.tag }}.zip
-          if-no-files-found: error
-
-  publish:
-    runs-on: ubuntu-latest
-    needs:
-      - build
-      - notarize
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/download-artifact@v8
-        with:
-          name: helper-zip-notarized-${{ needs.build.outputs.tag }}
-          path: release-assets
-
-      - name: Create GitHub release with assets
-        env:
-          TAG: ${{ needs.build.outputs.tag }}
-        run: |
-          set -euo pipefail
-          gh release create "$TAG" \
-            "release-assets/SMCFanHelper-${TAG}.zip" \
-            --target "$GITHUB_SHA" \
-            --title "$TAG" \
-            --notes "Automated release for $GITHUB_SHA"
+  release:
+    uses: agoodkind/swift-makefile/.github/workflows/_release.yml@main
+    with:
+      signing-identity-name: "Developer ID Application: Alex Goodkind (H3BMXM4W7H)"
+      apple-team-id: H3BMXM4W7H
+      notarize-pattern: "*.zip"
+      sbom-subject-path: "Products/SMCFanHelper.app"
+    secrets: inherit

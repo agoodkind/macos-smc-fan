@@ -1,0 +1,24 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ci:
+    uses: agoodkind/swift-makefile/.github/workflows/_ci.yml@main
+    with:
+      targets: '["lint","build","test"]'
+      fetch-depth: "0"
+      # The privileged LaunchDaemon helper requires a real Developer ID
+      # signature to register via SMAppService, so CI signs like release does.
+      import-signing-cert: true
+      signing-identity-name: "Developer ID Application: Alex Goodkind (H3BMXM4W7H)"
+      apple-team-id: H3BMXM4W7H
+    secrets: inherit
