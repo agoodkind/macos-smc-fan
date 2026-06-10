@@ -34,7 +34,7 @@ SWIFT_DEADCODE_BUILD_CMD := rm -rf $(BUILD_DIR) && $(MAKE) SWIFT_MK_SKIP_FETCH=1
 include bootstrap.mk
 
 .PHONY: build-local generate-project install-helper uninstall-helper \
-	test-integration format legacy-smcd-uninstall
+	test-integration legacy-smcd-uninstall
 
 # Kept as the lightweight xcodegen entry point that consumers building this helper
 # directly depend on (e.g. macos-fan-curve's helper-artifacts), independent of the
@@ -90,9 +90,6 @@ TEST_BUNDLE = .build/arm64-apple-macosx/debug/SMCFanPackageTests.xctest
 test-integration: build
 	swift build --build-tests
 	sudo $(XCTEST) -XCTest IntegrationTests $(TEST_BUNDLE)
-
-format:
-	swift-format format --in-place --recursive Sources/
 
 # Convenience for machines upgrading from the smcd era. Boots out the old
 # LaunchAgent and removes its plist and binary. No op on clean installs.
