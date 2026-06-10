@@ -1,3 +1,10 @@
-#include "local.xcconfig"
+// Public identifiers committed as defaults; the optional local include AFTER
+// them lets a developer's gitignored local.xcconfig override any of them
+// (xcconfig assignment is last-write-wins). Signing identity and team arrive
+// from swift-mk (env or local.xcconfig); CI passes them as make variables.
+BUNDLE_ID_PREFIX = io.goodkind
+HELPER_BUNDLE_ID = io.goodkind.smcfanhelper
+APP_BUNDLE_ID = io.goodkind.SMCFanHelper
+#include? "local.xcconfig"
 SWIFT_OPTIMIZATION_LEVEL = -Onone
 SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG
