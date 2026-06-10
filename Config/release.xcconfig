@@ -5,5 +5,12 @@
 BUNDLE_ID_PREFIX = io.goodkind
 HELPER_BUNDLE_ID = io.goodkind.smcfanhelper
 APP_BUNDLE_ID = io.goodkind.SMCFanHelper
+// Notarization requirements for Developer ID distribution: every Release
+// executable needs the hardened runtime, a secure timestamp on its signature,
+// and no injected get-task-allow debug entitlement. The notary service
+// rejects the archive on all three (status Invalid, statusCode 4000).
+ENABLE_HARDENED_RUNTIME = YES
+OTHER_CODE_SIGN_FLAGS = $(inherited) --timestamp
+CODE_SIGN_INJECT_BASE_ENTITLEMENTS = NO
 #include? "local.xcconfig"
 SWIFT_OPTIMIZATION_LEVEL = -O
