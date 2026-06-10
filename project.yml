@@ -66,9 +66,17 @@ targets:
           mkdir -p "${BUILT_PRODUCTS_DIR}/${PRODUCT_NAME}.app/Contents/Library/LaunchServices"
           cp "${BUILT_PRODUCTS_DIR}/${HELPER_NAME}" \
             "${BUILT_PRODUCTS_DIR}/${PRODUCT_NAME}.app/Contents/Library/LaunchServices/"
-          # Codesign the copy in LaunchServices
-          codesign -s "${EXPANDED_CODE_SIGN_IDENTITY}" -f --options runtime --timestamp \
-            "${BUILT_PRODUCTS_DIR}/${PRODUCT_NAME}.app/Contents/Library/LaunchServices/${HELPER_NAME}"
+          # Codesign the copy in LaunchServices through swift-mk's canonical
+          # channel; fall back to direct codesign only when no swift-mk binary
+          # exists (a raw Xcode GUI build before any make run).
+          if [ -x "${SRCROOT}/.make/swift-mk" ]; then
+            SWIFT_MK_SIGN_IDENTITY="${EXPANDED_CODE_SIGN_IDENTITY}" "${SRCROOT}/.make/swift-mk" \
+              codesign-run --mode binary \
+              "${BUILT_PRODUCTS_DIR}/${PRODUCT_NAME}.app/Contents/Library/LaunchServices/${HELPER_NAME}"
+          else
+            codesign -s "${EXPANDED_CODE_SIGN_IDENTITY}" -f --options runtime --timestamp \
+              "${BUILT_PRODUCTS_DIR}/${PRODUCT_NAME}.app/Contents/Library/LaunchServices/${HELPER_NAME}"
+          fi
           # Copy helper to MacOS (for SMAppService)
           cp "${BUILT_PRODUCTS_DIR}/${HELPER_NAME}" \
             "${BUILT_PRODUCTS_DIR}/${PRODUCT_NAME}.app/Contents/MacOS/"
