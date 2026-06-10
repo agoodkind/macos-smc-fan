@@ -5,6 +5,8 @@ BUILD_DIR ?= build
 PRODUCTS_DIR ?= Products
 
 SMCD_BUNDLE_ID = io.goodkind.smcd
+# Public identifier; Config/local.xcconfig (make-included above) may override.
+HELPER_BUNDLE_ID ?= io.goodkind.smcfanhelper
 
 # swift-mk consumer wiring. swift-mk owns build-time code signing through its
 # XCODE_XCCONFIG_FILE override, fed by CODE_SIGN_IDENTITY / DEVELOPMENT_TEAM from
@@ -12,12 +14,15 @@ SMCD_BUNDLE_ID = io.goodkind.smcd
 # Generation and the build route through the swift-mk `toolchain` chokepoint so no
 # consumer file names xcodegen or xcodebuild directly. Deferred `=` because
 # SWIFT_MK_BIN is set by swift.mk, included via bootstrap.mk below.
-SWIFT_MK_MODULES := swift-build.mk
+SWIFT_MK_MODULES := swift-build.mk swift-release.mk
 SWIFT_MK_OWN_RUN := 1
 SWIFT_MK_DERIVED_DATA := $(BUILD_DIR)
 SMC_GENERATOR := xcodegen
 SWIFT_GENERATE_CMD = "$(SWIFT_MK_BIN)" toolchain generate --generator $(SMC_GENERATOR)
 SWIFT_BUILD_CMD := $(MAKE) SWIFT_MK_SKIP_FETCH=1 build-local
+# Release artifacts for the shared _release.yml pipeline: the signed helper app
+# zipped into dist/ for notarization. RELEASE_TAG arrives from release-meta.
+SWIFT_MK_RELEASE_BUILD_CMD := $(MAKE) SWIFT_MK_SKIP_FETCH=1 build && ditto -c -k --keepParent Products/SMCFanHelper.app dist/SMCFanHelper-$$RELEASE_TAG.zip
 SWIFT_CLEAN_CMD := rm -rf $(BUILD_DIR) $(PRODUCTS_DIR) SMCFanApp.xcodeproj
 SWIFT_TEST_CMD := swift test
 SWIFT_DEPLOY_CMD := $(MAKE) SWIFT_MK_SKIP_FETCH=1 install-helper
