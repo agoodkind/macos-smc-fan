@@ -1,10 +1,10 @@
 name: CI
 
 on:
-  push:
-    branches: [main]
   pull_request:
     branches: [main]
+  push:
+    branches-ignore: [main]
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -14,7 +14,8 @@ jobs:
   ci:
     uses: agoodkind/swift-makefile/.github/workflows/_ci.yml@main
     with:
-      targets: '["lint","build","test"]'
+      # gate (lint/audit/deadcode) runs in the reusable workflow's mandatory gate job.
+      targets: '["build","test"]'
       fetch-depth: "0"
       # The privileged LaunchDaemon helper requires a real Developer ID
       # signature to register via SMAppService, so CI signs like release does.
