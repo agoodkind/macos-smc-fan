@@ -11,7 +11,9 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  ci:
+  # The caller job id is the middle segment of every reusable-workflow status
+  # check name (`CI / swift / build`).
+  swift:
     uses: agoodkind/swift-makefile/.github/workflows/_ci.yml@main
     with:
       # gate (lint/audit/deadcode) runs in the reusable workflow's mandatory gate job.
