@@ -1,28 +1,21 @@
 version: 2
 updates:
-  - package-ecosystem: swift
-    directory: /
+  - package-ecosystem: "swift"
+    directory: "/"
     schedule:
-      interval: weekly
-      day: monday
-    groups:
-      swift-minor-patch:
-        update-types:
-          - minor
-          - patch
-    open-pull-requests-limit: 5
+      interval: "cron"
+      cronjob: "0 */6 * * *"
+      timezone: "America/Los_Angeles"
+    open-pull-requests-limit: 10
     reviewers:
-      - agoodkind
+      - "agoodkind"
 
-  - package-ecosystem: github-actions
-    directory: /
+  - package-ecosystem: "github-actions"
+    directory: "/"
     schedule:
-      interval: weekly
-      day: monday
-    groups:
-      actions:
-        patterns:
-          - "*"
-    open-pull-requests-limit: 3
+      interval: "cron"
+      cronjob: "0 */6 * * *"
+      timezone: "America/Los_Angeles"
+    open-pull-requests-limit: 10
     reviewers:
-      - agoodkind
+      - "agoodkind"
