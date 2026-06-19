@@ -14,8 +14,6 @@ jobs:
   swift:
     uses: agoodkind/swift-makefile/.github/workflows/_ci.yml@main
     with:
-      # gate (lint/audit/deadcode) runs in the reusable workflow's mandatory gate job.
-      targets: '["build","test"]'
       fetch-depth: "0"
       # The privileged LaunchDaemon helper requires a real Developer ID
       # signature to register via SMAppService, so CI signs like release does.

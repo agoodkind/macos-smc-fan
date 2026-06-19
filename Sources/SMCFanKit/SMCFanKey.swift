@@ -7,7 +7,6 @@
 //
 
 import Foundation
-import SMCKit
 
 // MARK: - Fan Key Constants
 
