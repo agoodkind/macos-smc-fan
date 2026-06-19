@@ -8,6 +8,4 @@
 
 import XCTest
 
-@testable import SMCFanKit
-
 final class SMCFanKitTests: XCTestCase {}
