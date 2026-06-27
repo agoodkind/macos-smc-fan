@@ -1,38 +1,17 @@
-# bootstrap.mk fetches swift.mk, shared configs, and selected modules into
-# .make/ and then includes swift.mk. Consumer Makefiles set project commands
-# and then include this file.
+# bootstrap.mk fetches swift.mk into .make/ and includes it. swift.mk fetches its
+# own helper scripts, the shared lint/format/periphery/osv configs, and the
+# selected modules, so this stub is the only file a consumer commits and it
+# rarely changes. Consumer Makefiles set their project commands and
+# SWIFT_MK_MODULES, then include this file.
 
 SWIFT_MK_DEV_DIR ?=
-SWIFT_MK_MODULES ?=
 SWIFT_MK := .make/swift.mk
 SWIFT_MK_BASE_URL ?= https://raw.githubusercontent.com/agoodkind/swift-makefile/main
 SWIFT_MK_API_REPO ?= agoodkind/swift-makefile
 SWIFT_MK_API_REF ?= main
-SWIFT_MK_SWIFTLINT_CONFIG ?= .make/swiftlint.yml
-SWIFT_MK_SWIFT_FORMAT_CONFIG ?= .make/swift-format.json
-SWIFT_MK_PERIPHERY_CONFIG ?= .make/periphery.yml
-SWIFT_MK_ALLOW_LOCAL_CONFIGS ?=
 
-ifeq ($(strip $(SWIFT_MK_ALLOW_LOCAL_CONFIGS)),)
-ifeq ($(MAKELEVEL),0)
-ifneq ($(wildcard .swiftlint.yml),)
-ifneq ($(abspath $(SWIFT_MK_SWIFTLINT_CONFIG)),$(abspath .swiftlint.yml))
-$(warning swift-makefile: local .swiftlint.yml is ignored; shared SwiftLint config is $(SWIFT_MK_SWIFTLINT_CONFIG))
-endif
-endif
-ifneq ($(wildcard .swift-format),)
-ifneq ($(abspath $(SWIFT_MK_SWIFT_FORMAT_CONFIG)),$(abspath .swift-format))
-$(warning swift-makefile: local .swift-format is ignored; shared swift-format config is $(SWIFT_MK_SWIFT_FORMAT_CONFIG))
-endif
-endif
-ifneq ($(wildcard .periphery.yml),)
-ifneq ($(abspath $(SWIFT_MK_PERIPHERY_CONFIG)),$(abspath .periphery.yml))
-$(warning swift-makefile: local .periphery.yml is ignored; shared Periphery config is $(SWIFT_MK_PERIPHERY_CONFIG))
-endif
-endif
-endif
-endif
-
+# Fetch a single file from the local swift-makefile checkout (SWIFT_MK_DEV_DIR) or
+# GitHub. Used only to obtain swift.mk; swift.mk fetches everything else itself.
 define _swift_mk_fetch
 	tmp_file=$$(mktemp "$(2).tmp.XXXXXX") || exit 1; \
 	if [ -n "$(SWIFT_MK_DEV_DIR)" ] && [ -f "$(SWIFT_MK_DEV_DIR)/$(1)" ]; then \
@@ -51,24 +30,10 @@ define _swift_mk_fetch
 	fi
 endef
 
-SWIFT_MK_BOOTSTRAP_FETCHED := 1
-
-define _swift_mk_require_fetched
-$(if $(wildcard $(1)),,$(error swift-makefile expected $(1); rerun without SWIFT_MK_SKIP_FETCH))
-endef
-
 ifeq ($(strip $(SWIFT_MK_SKIP_FETCH)),1)
-SWIFT_MK_FETCH_CHECK := $(call _swift_mk_require_fetched,$(SWIFT_MK))
-SWIFT_MK_FETCH_CHECK += $(call _swift_mk_require_fetched,$(SWIFT_MK_SWIFTLINT_CONFIG))
-SWIFT_MK_FETCH_CHECK += $(call _swift_mk_require_fetched,$(SWIFT_MK_SWIFT_FORMAT_CONFIG))
-SWIFT_MK_FETCH_CHECK += $(call _swift_mk_require_fetched,$(SWIFT_MK_PERIPHERY_CONFIG))
-SWIFT_MK_FETCH_CHECK += $(foreach m,$(SWIFT_MK_MODULES),$(call _swift_mk_require_fetched,.make/$(m)))
+$(if $(wildcard $(SWIFT_MK)),,$(error swift-makefile expected $(SWIFT_MK); rerun without SWIFT_MK_SKIP_FETCH))
 else
 $(if $(filter ok,$(shell mkdir -p .make && if $(call _swift_mk_fetch,swift.mk,$(SWIFT_MK)); then printf ok; else printf fail; fi)),,$(error swift-makefile failed to fetch swift.mk))
-$(if $(filter ok,$(shell mkdir -p .make && if $(call _swift_mk_fetch,.swiftlint.yml,$(SWIFT_MK_SWIFTLINT_CONFIG)); then printf ok; else printf fail; fi)),,$(error swift-makefile failed to fetch .swiftlint.yml))
-$(if $(filter ok,$(shell mkdir -p .make && if $(call _swift_mk_fetch,.swift-format,$(SWIFT_MK_SWIFT_FORMAT_CONFIG)); then printf ok; else printf fail; fi)),,$(error swift-makefile failed to fetch .swift-format))
-$(if $(filter ok,$(shell mkdir -p .make && if $(call _swift_mk_fetch,.periphery.yml,$(SWIFT_MK_PERIPHERY_CONFIG)); then printf ok; else printf fail; fi)),,$(error swift-makefile failed to fetch .periphery.yml))
-$(foreach m,$(SWIFT_MK_MODULES),$(if $(filter ok,$(shell mkdir -p .make && if $(call _swift_mk_fetch,$(m),.make/$(m)); then printf ok; else printf fail; fi)),,$(error swift-makefile failed to fetch $(m))))
 endif
 
 -include $(SWIFT_MK)
