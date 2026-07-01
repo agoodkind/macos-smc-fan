@@ -28,8 +28,12 @@ SWIFT_TEST_CMD := swift test
 SWIFT_DEPLOY_CMD := $(MAKE) SWIFT_MK_SKIP_FETCH=1 install-helper
 # Logging enforcement is handled by swift-mk's stricter gates, so the hand-rolled
 # log-audit target was removed rather than wired through SWIFT_LOG_AUDIT_CMD.
-# Clean build so the dead-code gate reads a complete index.
-SWIFT_DEADCODE_BUILD_CMD := rm -rf $(BUILD_DIR) && $(MAKE) SWIFT_MK_SKIP_FETCH=1 build-local
+# The engine derives and owns the dead-code coverage build from these normal Xcode
+# inputs: it enumerates the (scheme, platform) matrix from the generated project and
+# enforces every index-critical setting, so no bespoke coverage command is declared.
+SWIFT_XCODE_PROJECT := SMCFanApp.xcodeproj
+SWIFT_XCODE_GENERATOR := $(SMC_GENERATOR)
+SWIFT_XCODE_COVERAGE_CONFIGURATION := $(CONFIGURATION)
 
 include bootstrap.mk
 
