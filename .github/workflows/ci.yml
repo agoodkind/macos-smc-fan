@@ -8,6 +8,10 @@ concurrency:
   group: ci-${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+  actions: read
+
 jobs:
   # The caller job id is the middle segment of every reusable-workflow status
   # check name (`CI / swift / build`).
