@@ -94,11 +94,3 @@ TEST_BUNDLE = .build/arm64-apple-macosx/debug/SMCFanPackageTests.xctest
 test-integration: build
 	"$(SWIFT_MK_BIN)" toolchain swiftpm build -- --build-tests
 	sudo $(XCTEST) -XCTest IntegrationTests $(TEST_BUNDLE)
-
-# Convenience for machines upgrading from the smcd era. Boots out the old
-# LaunchAgent and removes its plist and binary. No op on clean installs.
-legacy-smcd-uninstall:
-	-@launchctl bootout "gui/$$(id -u)/$(SMCD_BUNDLE_ID)" 2>/dev/null || true
-	-@rm -f "$(HOME)/Library/LaunchAgents/$(SMCD_BUNDLE_ID).plist"
-	-@rm -f "$(HOME)/.local/bin/smcd"
-	@echo "Legacy smcd agent removed."
