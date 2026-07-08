@@ -11,8 +11,8 @@ HELPER_BUNDLE_ID ?= io.goodkind.smcfanhelper
 # swift-mk consumer wiring. swift-mk owns build-time code signing through its
 # XCODE_XCCONFIG_FILE override, fed by CODE_SIGN_IDENTITY / DEVELOPMENT_TEAM from
 # Config/local.xcconfig, so neither project.yml nor this Makefile sets signing.
-# Generation and the build route through the swift-mk `toolchain` chokepoint so no
-# consumer file names xcodegen or xcodebuild directly. Deferred `=` because
+# Generation and the build route through the swift-mk `toolchain` chokepoint so
+# lower-level build drivers stay behind the engine. Deferred `=` because
 # SWIFT_MK_BIN is set by swift.mk, included via bootstrap.mk below.
 SWIFT_MK_MODULES := swift-build.mk swift-release.mk
 SWIFT_MK_OWN_RUN := 1
@@ -24,7 +24,7 @@ SWIFT_BUILD_CMD := $(MAKE) SWIFT_MK_SKIP_FETCH=1 build-local
 # zipped into dist/ for notarization. RELEASE_TAG arrives from release-meta.
 SWIFT_MK_RELEASE_BUILD_CMD := $(MAKE) SWIFT_MK_SKIP_FETCH=1 build && ditto -c -k --keepParent Products/SMCFanHelper.app dist/SMCFanHelper-$$RELEASE_TAG.zip
 SWIFT_CLEAN_CMD := rm -rf $(BUILD_DIR) $(PRODUCTS_DIR) SMCFanApp.xcodeproj
-SWIFT_TEST_CMD := swift test
+SWIFT_TEST_CMD = "$(SWIFT_MK_BIN)" toolchain swiftpm test
 SWIFT_DEPLOY_CMD := $(MAKE) SWIFT_MK_SKIP_FETCH=1 install-helper
 # Logging enforcement is handled by swift-mk's stricter gates, so the hand-rolled
 # log-audit target was removed rather than wired through SWIFT_LOG_AUDIT_CMD.
@@ -46,9 +46,9 @@ include bootstrap.mk
 generate-project:
 	"$(SWIFT_MK_BIN)" toolchain generate --generator $(SMC_GENERATOR)
 
-# The Xcode app/helper build, routed through the swift-mk `toolchain` chokepoint so
-# this file never names xcodebuild. Run by swift-mk's `build` after the signing
-# prelude exports XCODE_XCCONFIG_FILE, so both schemes sign with the swift-mk identity.
+# The Xcode app/helper build routes through the swift-mk `toolchain` chokepoint.
+# Run by swift-mk's `build` after the signing prelude exports XCODE_XCCONFIG_FILE,
+# so both schemes sign with the swift-mk identity.
 build-local: generate
 	"$(SWIFT_MK_BIN)" toolchain build --generator $(SMC_GENERATOR) \
 		--project SMCFanApp.xcodeproj \
@@ -92,7 +92,7 @@ XCTEST = $(shell xcrun --find xctest)
 TEST_BUNDLE = .build/arm64-apple-macosx/debug/SMCFanPackageTests.xctest
 
 test-integration: build
-	swift build --build-tests
+	"$(SWIFT_MK_BIN)" toolchain swiftpm build -- --build-tests
 	sudo $(XCTEST) -XCTest IntegrationTests $(TEST_BUNDLE)
 
 # Convenience for machines upgrading from the smcd era. Boots out the old
