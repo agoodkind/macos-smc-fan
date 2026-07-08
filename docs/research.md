@@ -1,8 +1,9 @@
 # SMC fan control research
 
-This document holds the deeper research narrative behind the project. The slim [`README.md`](../README.md) covers project structure, quick start, and links here.
+This document holds the deeper research narrative behind the project. [README.md](../README.md) covers project structure and quick start.
 
-Currently observed integration test results live in `[testing.md](testing.md)`. Hardware-specific expectations consumed by integration tests live as plists in `[../Tests/IntegrationTests/Fixtures](../Tests/IntegrationTests/Fixtures)`, with the schema defined by `[../Tests/IntegrationTests/HardwareExpectations.swift](../Tests/IntegrationTests/HardwareExpectations.swift)`.
+TODO: rewrite this into the testing section or link to testing. remove backticks.
+Currently integration test results live in `[testing.md](testing.md)`. Hardware-specific expectations consumed by integration tests live as plists in `[../Tests/IntegrationTests/Fixtures](../Tests/IntegrationTests/Fixtures)`, with the schema defined by `[../Tests/IntegrationTests/HardwareExpectations.swift](../Tests/IntegrationTests/HardwareExpectations.swift)`.
 
 ## Methodology
 
