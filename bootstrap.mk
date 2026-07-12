@@ -11,9 +11,10 @@ SWIFT_MK_API_REPO ?= agoodkind/swift-makefile
 SWIFT_MK_API_REF ?= main
 
 # Fetch a single file from the local swift-makefile checkout (SWIFT_MK_DEV_DIR) or
-# GitHub. Used only to obtain swift.mk; swift.mk fetches everything else itself.
+# GitHub. Used to obtain swift.mk; swift.mk fetches everything else itself.
 define _swift_mk_fetch
 	tmp_file=$$(mktemp "$(2).tmp.XXXXXX") || exit 1; \
+	trap 'rm -f "$$tmp_file"' EXIT; \
 	if [ -n "$(SWIFT_MK_DEV_DIR)" ] && [ -f "$(SWIFT_MK_DEV_DIR)/$(1)" ]; then \
 		cp "$(SWIFT_MK_DEV_DIR)/$(1)" "$$tmp_file" && [ -s "$$tmp_file" ] && mv "$$tmp_file" "$(2)"; \
 	else \
@@ -23,12 +24,52 @@ define _swift_mk_fetch
 		elif curl -fsSL --connect-timeout 5 --max-time 10 "$(SWIFT_MK_BASE_URL)/$(1)" -o "$$tmp_file" && [ -s "$$tmp_file" ]; then \
 			mv "$$tmp_file" "$(2)"; \
 		else \
-			rm -f "$$tmp_file"; \
-			printf '%s\n' "error: $(1) fetch failed. Run: gh auth login"; \
+			printf '%s\n' "error: could not fetch $(1) (tried SWIFT_MK_DEV_DIR, gh api, then $(SWIFT_MK_BASE_URL)); check your network connection, and if gh is installed run 'gh auth status'" >&2; \
 			exit 1; \
 		fi; \
 	fi
 endef
+
+# Print the trace header before any other work. This is a minimal self-contained
+# core: adopt an inherited TRACEPARENT (any well-formed one, normalized to flags
+# 01), then the canonical TRACE_ID/SPAN_ID pair, then the SWIFT_MK_TRACE_ID/
+# SWIFT_MK_SPAN_ID aliases, or mint a fresh id, so the consumer bootstrap needs no
+# fetch and works offline. The full trace logic (same precedence plus stricter
+# W3C validation) lives once in scripts/swift-mk-trace.sh, which swift.mk runs for
+# the engine build. Wrapped in a define so make treats the shell body literally,
+# not as make comments/parens.
+define swift_mk_trace_min
+$(shell \
+	log_dir=".make/logs"; mkdir -p "$$log_dir" || exit 1; \
+	tp="$$TRACEPARENT"; trace=""; span=""; \
+	rest=$${tp#00-}; \
+	if [ "$$rest" != "$$tp" ]; then trace=$${rest%%-*}; tail=$${rest#*-}; span=$${tail%%-*}; fi; \
+	is_id() { [ $${#1} -eq "$$2" ] && [ -z "`printf '%s' "$$1" | tr -d 0123456789abcdef`" ] && [ -n "`printf '%s' "$$1" | tr -d 0`" ]; }; \
+	if ! is_id "$$trace" 32 || ! is_id "$$span" 16; then trace=""; span=""; fi; \
+	if [ -z "$$trace" ] && is_id "$$TRACE_ID" 32 && is_id "$$SPAN_ID" 16; then trace="$$TRACE_ID"; span="$$SPAN_ID"; fi; \
+	if [ -z "$$trace" ] && is_id "$$SWIFT_MK_TRACE_ID" 32 && is_id "$$SWIFT_MK_SPAN_ID" 16; then trace="$$SWIFT_MK_TRACE_ID"; span="$$SWIFT_MK_SPAN_ID"; fi; \
+	if [ -z "$$trace" ]; then \
+		trace=`od -An -N16 -tx1 /dev/urandom 2>/dev/null | tr -d '[:space:]'`; \
+		span=`od -An -N8 -tx1 /dev/urandom 2>/dev/null | tr -d '[:space:]'`; \
+	fi; \
+	if ! is_id "$$trace" 32 || ! is_id "$$span" 16; then exit 0; fi; \
+	tp="00-$$trace-$$span-01"; \
+	printf '%s\n' "$$tp" > "$$log_dir/.traceparent" || exit 1; \
+	prev=""; if [ -s "$$log_dir/.run" ]; then IFS= read -r prev < "$$log_dir/.run"; fi; \
+	if [ "$$prev" != "$$trace" ]; then printf '%s\n' "$$trace" > "$$log_dir/.run"; \
+		printf '🔎 logs=.make/logs trace_id=%s span_id=%s\n' "$$trace" "$$span" >&2; fi; \
+	printf 'ok %s %s %s' "$$tp" "$$trace" "$$span")
+endef
+
+SWIFT_MK_TRACE_RESULT := $(call swift_mk_trace_min)
+ifeq ($(word 1,$(SWIFT_MK_TRACE_RESULT)),ok)
+TRACEPARENT := $(word 2,$(SWIFT_MK_TRACE_RESULT))
+TRACE_ID := $(word 3,$(SWIFT_MK_TRACE_RESULT))
+SPAN_ID := $(word 4,$(SWIFT_MK_TRACE_RESULT))
+SWIFT_MK_TRACE_ID := $(TRACE_ID)
+SWIFT_MK_SPAN_ID := $(SPAN_ID)
+export TRACEPARENT TRACE_ID SPAN_ID SWIFT_MK_TRACE_ID SWIFT_MK_SPAN_ID
+endif
 
 ifeq ($(strip $(SWIFT_MK_SKIP_FETCH)),1)
 $(if $(wildcard $(SWIFT_MK)),,$(error swift-makefile expected $(SWIFT_MK); rerun without SWIFT_MK_SKIP_FETCH))
