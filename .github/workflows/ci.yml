@@ -16,7 +16,7 @@ jobs:
   # The caller job id is the middle segment of every reusable-workflow status
   # check name (`CI / swift / build`).
   swift:
-    uses: agoodkind/swift-makefile/.github/workflows/_ci.yml@main
+    uses: agoodkind/swift-makefile/.github/workflows/_ci.yml@swift-mk-change-detection-ubuntu
     with:
       fetch-depth: "0"
       # The privileged LaunchDaemon helper requires a real Developer ID
