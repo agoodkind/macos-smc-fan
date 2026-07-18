@@ -120,3 +120,5 @@ xed .
 - Research narrative: [`docs/research.md`](docs/research.md). Methodology, background, research findings, technical details, fan control behavior, further testing notes, and takeaways live here.
 - Currently observed test results: [`docs/testing.md`](docs/testing.md). Updated as new runs are recorded.
 - Integration test fixtures: [`Tests/IntegrationTests/Fixtures`](Tests/IntegrationTests/Fixtures), consumed by [`Tests/IntegrationTests/HardwareExpectations.swift`](Tests/IntegrationTests/HardwareExpectations.swift).
+
+<!-- change-detection skip probe 20260718T183859Z (do not merge) -->
