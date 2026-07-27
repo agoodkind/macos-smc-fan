@@ -124,6 +124,56 @@ public final class SMCFanHelper: NSObject, NSXPCListenerDelegate, SMCFanHelperPr
     }
   }
 
+  public func smcReadKeys(_ keys: [String], reply: ([Bool], [Float], [String]) -> Void) {
+    var successes: [Bool] = []
+    var values: [Float] = []
+    var errors: [String] = []
+    successes.reserveCapacity(keys.count)
+    values.reserveCapacity(keys.count)
+    errors.reserveCapacity(keys.count)
+
+    do {
+      try ensureConnected()
+    } catch {
+      log.error("smc.keys.read.connect.failed error=\(error.localizedDescription, privacy: .public)")
+      reply(
+        [Bool](repeating: false, count: keys.count),
+        [Float](repeating: 0, count: keys.count),
+        [String](repeating: error.localizedDescription, count: keys.count)
+      )
+      return
+    }
+
+    guard let fanController else {
+      reply(
+        [Bool](repeating: false, count: keys.count),
+        [Float](repeating: 0, count: keys.count),
+        [String](repeating: "Connection not established", count: keys.count)
+      )
+      return
+    }
+
+    var failedCount = 0
+    for key in keys {
+      do {
+        let (value, size) = try fanController.connection.readKey(key)
+        values.append(SMCDataFormat.float(from: value, size: size))
+        successes.append(true)
+        errors.append("")
+      } catch {
+        failedCount += 1
+        successes.append(false)
+        values.append(0)
+        errors.append(error.localizedDescription)
+      }
+    }
+
+    log.debug(
+      "smc.keys.read count=\(keys.count, privacy: .public) failed=\(failedCount, privacy: .public)"
+    )
+    reply(successes, values, errors)
+  }
+
   public func smcWriteKey(_ key: String, value: Float, reply: (Bool, String?) -> Void) {
     do {
       try ensureConnected()

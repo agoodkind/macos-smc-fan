@@ -8,6 +8,7 @@
 
 import Foundation
 import Nimble
+import SMCFanXPCClient
 import XCTest
 
 /// Integration tests that require the helper daemon to be installed and running
@@ -182,6 +183,46 @@ final class IntegrationTests: XCTestCase {
     expect(connection) != nil
 
     connection.invalidate()
+  }
+
+  // MARK: - Batch Read Tests
+
+  /// Exercises `smcReadKeys` through the same `SMCFanXPCClient` the Fan Curve
+  /// agent uses, comparing it against calling `readKey` once per key.
+  func testReadKeys_MatchesPerKeyReads_AndFlagsMissingKey() async throws {
+    let client = SMCFanXPCClient(clientName: "smcfan-integration-test")
+    try await client.open()
+
+    let existingKeys = ["FNum", "F0Mn", "F0Mx"]
+    let missingKey = "ZZZZ"
+    let requestedKeys = existingKeys + [missingKey]
+
+    var expectedValues: [String: Float] = [:]
+    for key in existingKeys {
+      expectedValues[key] = try await client.readKey(key)
+    }
+
+    let batchResults = try await client.readKeys(requestedKeys)
+
+    expect(batchResults.count).to(
+      equal(requestedKeys.count), description: "results array must match requested key count")
+    expect(batchResults.map(\.key)).to(
+      equal(requestedKeys), description: "results must preserve request order")
+
+    for (index, key) in existingKeys.enumerated() {
+      let result = batchResults[index]
+      expect(result.success).to(beTrue(), description: "\(key) should succeed in batch")
+      expect(result.value).to(
+        equal(expectedValues[key]), description: "\(key) batch value should match per-key read")
+    }
+
+    let missingResult = batchResults[existingKeys.count]
+    expect(missingResult.success).to(
+      beFalse(), description: "\(missingKey) should be flagged as missing")
+    expect(missingResult.error.isEmpty).to(
+      beFalse(), description: "missing key should carry a diagnostic error")
+
+    try await client.close()
   }
 
   // MARK: - Fan Read Tests

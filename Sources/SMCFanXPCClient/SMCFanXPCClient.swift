@@ -388,6 +388,61 @@ public final class SMCFanXPCClient: @unchecked Sendable {
     return try await self.call { proxy, reply in proxy.smcReadKey(key, reply: reply) }
   }
 
+  /// Result of a batched key read. `success` distinguishes a key that
+  /// legitimately does not exist on this machine from a read failure;
+  /// `error` is empty for successful entries.
+  public struct KeyReadResult: Sendable {
+    public let key: String
+    public let success: Bool
+    public let value: Float
+    public let error: String
+
+    public init(key: String, success: Bool, value: Float, error: String) {
+      self.key = key
+      self.success = success
+      self.value = value
+      self.error = error
+    }
+  }
+
+  /// Read multiple SMC keys in a single XPC round trip. Returns one
+  /// `KeyReadResult` per requested key, in request order.
+  public func readKeys(_ keys: [String]) async throws -> [KeyReadResult] {
+    try await self.ensureOpened()
+    let conn = self.ensureConnection()
+    return try await withCheckedThrowingContinuation { continuation in
+      let once = ResumeGuard()
+      let proxy = conn.remoteObjectProxyWithErrorHandler { error in
+        once.tryResume {
+          log.error(
+            "xpc.proxy_error op=readKeys error=\(error.localizedDescription, privacy: .public)"
+          )
+          continuation.resume(throwing: SMCXPCError(error.localizedDescription))
+        }
+      }
+      guard let typedProxy = proxy as? SMCFanHelperProtocol else {
+        once.tryResume {
+          continuation.resume(throwing: SMCXPCError("Failed to get proxy"))
+        }
+        return
+      }
+      typedProxy.smcReadKeys(keys) { successes, values, errors in
+        once.tryResume {
+          let count = min(keys.count, successes.count, values.count, errors.count)
+          let results: [KeyReadResult] = (0..<count).map { index in
+            KeyReadResult(
+              key: keys[index],
+              success: successes[index],
+              value: values[index],
+              error: errors[index]
+            )
+          }
+          continuation.resume(returning: results)
+        }
+      }
+    }
+  }
+
   public func enumerateKeys() async -> [String] {
     do { try await self.ensureOpened() } catch { return [] }
     let conn = self.ensureConnection()
