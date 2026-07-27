@@ -30,6 +30,27 @@ final class IntegrationTests: XCTestCase {
     return hw
   }
 
+  /// Mach service name of the privileged helper, however it was installed.
+  private static let helperServiceName = "io.goodkind.smcfanhelper"
+
+  /// True when launchd has the helper daemon registered in the system domain.
+  /// Covers both install shapes: a standalone `make install`, and a consumer
+  /// app registering the same daemon through `SMAppService`.
+  private static func helperDaemonIsRunning() -> Bool {
+    let process = Process()
+    process.executableURL = URL(fileURLWithPath: "/bin/launchctl")
+    process.arguments = ["print", "system/\(helperServiceName)"]
+    process.standardOutput = FileHandle.nullDevice
+    process.standardError = FileHandle.nullDevice
+    do {
+      try process.run()
+    } catch {
+      return false
+    }
+    process.waitUntilExit()
+    return process.terminationStatus == 0
+  }
+
   override func setUpWithError() throws {
     try super.setUpWithError()
 
@@ -48,16 +69,18 @@ final class IntegrationTests: XCTestCase {
     fputs("[setup] Hardware: \(detected.chipName) (\(detected.modelIdentifier))\n", stderr)
     fflush(stderr)
 
-    if #available(macOS 13.0, *) {
-      let appPath = "/Applications/SMCFanHelper.app"
-      guard FileManager.default.fileExists(atPath: appPath) else {
-        throw XCTSkip("SMCFanHelper.app not found in /Applications")
-      }
-    } else {
-      let helperPath = "/Library/LaunchDaemons/io.goodkind.smcfanhelper.plist"
-      guard FileManager.default.fileExists(atPath: helperPath) else {
-        throw XCTSkip("Helper not installed. Run: make install")
-      }
+    // What these tests actually need is a reachable helper daemon, not a
+    // particular install layout. A standalone /Applications/SMCFanHelper.app
+    // is only one way to get one: a consumer app such as Fan Curve registers
+    // the same daemon with SMAppService from inside its own bundle, and then
+    // no standalone app exists. Checking for the app bundle silently skipped
+    // this entire suite on such machines. Ask launchd instead.
+    guard Self.helperDaemonIsRunning() else {
+      throw XCTSkip(
+        "Helper daemon \(Self.helperServiceName) is not registered with launchd. "
+          + "Install it standalone with `make install`, or run a consumer app "
+          + "that registers it, then retry."
+      )
     }
 
     // Reset all fans to auto before each test

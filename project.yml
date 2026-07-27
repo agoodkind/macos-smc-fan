@@ -101,6 +101,7 @@ targets:
       - path: Sources/Helper
         excludes:
           - "SMCFanHelper.swift"
+          - "SMCFanHelper+BatchRead.swift"
       - path: Sources/Common
         excludes:
           - "Config.generated.swift"
