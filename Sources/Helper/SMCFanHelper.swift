@@ -13,14 +13,18 @@ import SMCFanKit
 import SMCFanProtocol
 import SMCKit
 
-private let log = AppLog.make(category: "Helper")
+// Internal (not private) so SMCFanHelper+BatchRead.swift, in the same target,
+// can log under the same "Helper" category.
+let log = AppLog.make(category: "Helper")
 
 public final class SMCFanHelper: NSObject, NSXPCListenerDelegate, SMCFanHelperProtocol,
   @unchecked Sendable
 {
   private let listener: NSXPCListener
   private let machServiceName: String
-  private var fanController: FanController?
+  // Internal (not private) so SMCFanHelper+BatchRead.swift, in the same
+  // target, can reach the shared SMC connection.
+  var fanController: FanController?
   private let fanVerifyLock = NSLock()
   private var fanVerifyTasks: [UInt: Task<Void, Never>] = [:]
   private let arbitrator = FanArbitrator()
@@ -77,7 +81,9 @@ public final class SMCFanHelper: NSObject, NSXPCListenerDelegate, SMCFanHelperPr
 
   // MARK: - Connection Management
 
-  private func ensureConnected() throws {
+  // Internal (not private) so SMCFanHelper+BatchRead.swift, in the same
+  // target, can establish the connection before a batch read.
+  func ensureConnected() throws {
     if fanController == nil {
       let conn = try SMCConnection()
       fanController = FanController(connection: conn)
@@ -124,54 +130,10 @@ public final class SMCFanHelper: NSObject, NSXPCListenerDelegate, SMCFanHelperPr
     }
   }
 
+  /// Batched multi-key read. The implementation lives in
+  /// `SMCFanHelper+BatchRead.swift` to keep this file within its length limit.
   public func smcReadKeys(_ keys: [String], reply: ([Bool], [Float], [String]) -> Void) {
-    var successes: [Bool] = []
-    var values: [Float] = []
-    var errors: [String] = []
-    successes.reserveCapacity(keys.count)
-    values.reserveCapacity(keys.count)
-    errors.reserveCapacity(keys.count)
-
-    do {
-      try ensureConnected()
-    } catch {
-      log.error("smc.keys.read.connect.failed error=\(error.localizedDescription, privacy: .public)")
-      reply(
-        [Bool](repeating: false, count: keys.count),
-        [Float](repeating: 0, count: keys.count),
-        [String](repeating: error.localizedDescription, count: keys.count)
-      )
-      return
-    }
-
-    guard let fanController else {
-      reply(
-        [Bool](repeating: false, count: keys.count),
-        [Float](repeating: 0, count: keys.count),
-        [String](repeating: "Connection not established", count: keys.count)
-      )
-      return
-    }
-
-    var failedCount = 0
-    for key in keys {
-      do {
-        let (value, size) = try fanController.connection.readKey(key)
-        values.append(SMCDataFormat.float(from: value, size: size))
-        successes.append(true)
-        errors.append("")
-      } catch {
-        failedCount += 1
-        successes.append(false)
-        values.append(0)
-        errors.append(error.localizedDescription)
-      }
-    }
-
-    log.debug(
-      "smc.keys.read count=\(keys.count, privacy: .public) failed=\(failedCount, privacy: .public)"
-    )
-    reply(successes, values, errors)
+    batchReadKeys(keys, reply: reply)
   }
 
   public func smcWriteKey(_ key: String, value: Float, reply: (Bool, String?) -> Void) {

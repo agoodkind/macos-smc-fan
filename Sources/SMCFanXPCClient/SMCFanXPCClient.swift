@@ -428,18 +428,45 @@ public final class SMCFanXPCClient: @unchecked Sendable {
       }
       typedProxy.smcReadKeys(keys) { successes, values, errors in
         once.tryResume {
-          let count = min(keys.count, successes.count, values.count, errors.count)
-          let results: [KeyReadResult] = (0..<count).map { index in
-            KeyReadResult(
-              key: keys[index],
-              success: successes[index],
-              value: values[index],
-              error: errors[index]
+          do {
+            let results = try Self.buildKeyReadResults(
+              keys: keys, successes: successes, values: values, errors: errors
             )
+            continuation.resume(returning: results)
+          } catch {
+            log.error(
+              "xpc.read_keys.length_mismatch error=\(error.localizedDescription, privacy: .public)"
+            )
+            continuation.resume(throwing: error)
           }
-          continuation.resume(returning: results)
         }
       }
+    }
+  }
+
+  /// Pairs each requested key with its reply, in request order. The reply is
+  /// positional, and `NSXPCInterface` enforces nothing about cross-array
+  /// lengths, so a helper that answers with a short array is a broken
+  /// contract, not a request for fewer keys; this throws instead of
+  /// truncating so that break is loud rather than silently mistaken for
+  /// missing keys.
+  static func buildKeyReadResults(
+    keys: [String], successes: [Bool], values: [Float], errors: [String]
+  ) throws -> [KeyReadResult] {
+    guard successes.count == keys.count, values.count == keys.count, errors.count == keys.count
+    else {
+      let detail =
+        "requested=\(keys.count) successes=\(successes.count) "
+        + "values=\(values.count) errors=\(errors.count)"
+      throw SMCXPCError("Helper returned mismatched array lengths: \(detail)")
+    }
+    return keys.indices.map { index in
+      KeyReadResult(
+        key: keys[index],
+        success: successes[index],
+        value: values[index],
+        error: errors[index]
+      )
     }
   }
 
