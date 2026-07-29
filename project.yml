@@ -70,11 +70,17 @@ targets:
           # channel. There is no direct-codesign fallback: a build without the
           # swift-mk binary fails so every signature comes from the one
           # channel. Run make so the binary exists.
-          if [ ! -x "${SRCROOT}/.make/swift-mk" ]; then
-            echo "Copy Helper and Plists: ${SRCROOT}/.make/swift-mk not found; run make first" >&2
+          #
+          # swift.mk exports SWIFT_MK_BIN, so take the engine's own answer for
+          # where the binary is. CI builds one pooled toolchain binary and
+          # points SWIFT_MK_BIN at it instead of building a second copy under
+          # .make, so assuming .make/swift-mk fails there.
+          SWIFT_MK="${SWIFT_MK_BIN:-${SRCROOT}/.make/swift-mk}"
+          if [ ! -x "${SWIFT_MK}" ]; then
+            echo "Copy Helper and Plists: swift-mk not found at ${SWIFT_MK}; run make first" >&2
             exit 1
           fi
-          SWIFT_MK_SIGN_IDENTITY="${EXPANDED_CODE_SIGN_IDENTITY}" "${SRCROOT}/.make/swift-mk" \
+          SWIFT_MK_SIGN_IDENTITY="${EXPANDED_CODE_SIGN_IDENTITY}" "${SWIFT_MK}" \
             codesign-run --mode binary \
             "${BUILT_PRODUCTS_DIR}/${PRODUCT_NAME}.app/Contents/Library/LaunchServices/${HELPER_NAME}"
           # Copy helper to MacOS (for SMAppService)

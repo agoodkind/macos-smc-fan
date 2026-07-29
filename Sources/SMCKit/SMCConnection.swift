@@ -197,6 +197,9 @@ public final class SMCConnection: @unchecked Sendable {
     }
     inp.key = input.key
     inp.data8 = input.data8
+    // readIndex passes the key index here, so dropping it makes every
+    // indexed read return the key at index 0.
+    inp.data32 = input.data32
     inp.keyInfo.dataSize = input.keyInfo.dataSize
     inp.bytes = input.bytes
     var out = SMCParamStruct()
