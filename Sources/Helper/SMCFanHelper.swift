@@ -13,14 +13,18 @@ import SMCFanKit
 import SMCFanProtocol
 import SMCKit
 
-private let log = AppLog.make(category: "Helper")
+// Internal (not private) so SMCFanHelper+BatchRead.swift, in the same target,
+// can log under the same "Helper" category.
+let log = AppLog.make(category: "Helper")
 
 public final class SMCFanHelper: NSObject, NSXPCListenerDelegate, SMCFanHelperProtocol,
   @unchecked Sendable
 {
   private let listener: NSXPCListener
   private let machServiceName: String
-  private var fanController: FanController?
+  // Internal (not private) so SMCFanHelper+BatchRead.swift, in the same
+  // target, can reach the shared SMC connection.
+  var fanController: FanController?
   private let fanVerifyLock = NSLock()
   private var fanVerifyTasks: [UInt: Task<Void, Never>] = [:]
   private let arbitrator = FanArbitrator()
@@ -77,7 +81,9 @@ public final class SMCFanHelper: NSObject, NSXPCListenerDelegate, SMCFanHelperPr
 
   // MARK: - Connection Management
 
-  private func ensureConnected() throws {
+  // Internal (not private) so SMCFanHelper+BatchRead.swift, in the same
+  // target, can establish the connection before a batch read.
+  func ensureConnected() throws {
     if fanController == nil {
       let conn = try SMCConnection()
       fanController = FanController(connection: conn)
@@ -122,6 +128,12 @@ public final class SMCFanHelper: NSObject, NSXPCListenerDelegate, SMCFanHelperPr
       )
       reply(false, 0, error.localizedDescription)
     }
+  }
+
+  /// Batched multi-key read. The implementation lives in
+  /// `SMCFanHelper+BatchRead.swift` to keep this file within its length limit.
+  public func smcReadKeys(_ keys: [String], reply: ([Bool], [Float], [String]) -> Void) {
+    batchReadKeys(keys, reply: reply)
   }
 
   public func smcWriteKey(_ key: String, value: Float, reply: (Bool, String?) -> Void) {

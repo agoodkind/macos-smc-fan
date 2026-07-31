@@ -67,6 +67,16 @@ public enum SMCFanPriority {
     reply: @escaping @Sendable (Bool, Float, String?) -> Void
   )
 
+  /// Read multiple SMC key values in a single round trip. Returns three
+  /// parallel arrays, one entry per requested key in request order: per
+  /// key success, per key value (0 when unsuccessful), and per key error
+  /// (empty string for successful entries, since some keys legitimately
+  /// do not exist on a given machine).
+  func smcReadKeys(
+    _ keys: [String],
+    reply: @escaping @Sendable ([Bool], [Float], [String]) -> Void
+  )
+
   /// Write a value to an SMC key
   func smcWriteKey(
     _ key: String,

@@ -4,7 +4,6 @@ CONFIGURATION ?= Release
 BUILD_DIR ?= build
 PRODUCTS_DIR ?= Products
 
-SMCD_BUNDLE_ID = io.goodkind.smcd
 # Public identifier; Config/local.xcconfig (make-included above) may override.
 HELPER_BUNDLE_ID ?= io.goodkind.smcfanhelper
 
@@ -38,7 +37,7 @@ SWIFT_XCODE_COVERAGE_CONFIGURATION := $(CONFIGURATION)
 include bootstrap.mk
 
 .PHONY: build-local generate-project install-helper uninstall-helper \
-	test-integration legacy-smcd-uninstall
+	test-integration
 
 # Kept as the lightweight xcodegen entry point that consumers building this helper
 # directly depend on (e.g. macos-fan-curve's helper-artifacts), independent of the
@@ -94,11 +93,3 @@ TEST_BUNDLE = .build/arm64-apple-macosx/debug/SMCFanPackageTests.xctest
 test-integration: build
 	"$(SWIFT_MK_BIN)" toolchain swiftpm build -- --build-tests
 	sudo $(XCTEST) -XCTest IntegrationTests $(TEST_BUNDLE)
-
-# Convenience for machines upgrading from the smcd era. Boots out the old
-# LaunchAgent and removes its plist and binary. No op on clean installs.
-legacy-smcd-uninstall:
-	-@launchctl bootout "gui/$$(id -u)/$(SMCD_BUNDLE_ID)" 2>/dev/null || true
-	-@rm -f "$(HOME)/Library/LaunchAgents/$(SMCD_BUNDLE_ID).plist"
-	-@rm -f "$(HOME)/.local/bin/smcd"
-	@echo "Legacy smcd agent removed."

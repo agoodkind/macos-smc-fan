@@ -388,6 +388,88 @@ public final class SMCFanXPCClient: @unchecked Sendable {
     return try await self.call { proxy, reply in proxy.smcReadKey(key, reply: reply) }
   }
 
+  /// Result of a batched key read. `success` distinguishes a key that
+  /// legitimately does not exist on this machine from a read failure;
+  /// `error` is empty for successful entries.
+  public struct KeyReadResult: Sendable {
+    public let key: String
+    public let success: Bool
+    public let value: Float
+    public let error: String
+
+    public init(key: String, success: Bool, value: Float, error: String) {
+      self.key = key
+      self.success = success
+      self.value = value
+      self.error = error
+    }
+  }
+
+  /// Read multiple SMC keys in a single XPC round trip. Returns one
+  /// `KeyReadResult` per requested key, in request order.
+  public func readKeys(_ keys: [String]) async throws -> [KeyReadResult] {
+    try await self.ensureOpened()
+    let conn = self.ensureConnection()
+    return try await withCheckedThrowingContinuation { continuation in
+      let once = ResumeGuard()
+      let proxy = conn.remoteObjectProxyWithErrorHandler { error in
+        once.tryResume {
+          log.error(
+            "xpc.proxy_error op=readKeys error=\(error.localizedDescription, privacy: .public)"
+          )
+          continuation.resume(throwing: SMCXPCError(error.localizedDescription))
+        }
+      }
+      guard let typedProxy = proxy as? SMCFanHelperProtocol else {
+        once.tryResume {
+          continuation.resume(throwing: SMCXPCError("Failed to get proxy"))
+        }
+        return
+      }
+      typedProxy.smcReadKeys(keys) { successes, values, errors in
+        once.tryResume {
+          do {
+            let results = try Self.buildKeyReadResults(
+              keys: keys, successes: successes, values: values, errors: errors
+            )
+            continuation.resume(returning: results)
+          } catch {
+            log.error(
+              "xpc.read_keys.length_mismatch error=\(error.localizedDescription, privacy: .public)"
+            )
+            continuation.resume(throwing: error)
+          }
+        }
+      }
+    }
+  }
+
+  /// Pairs each requested key with its reply, in request order. The reply is
+  /// positional, and `NSXPCInterface` enforces nothing about cross-array
+  /// lengths, so a helper that answers with a short array is a broken
+  /// contract, not a request for fewer keys; this throws instead of
+  /// truncating so that break is loud rather than silently mistaken for
+  /// missing keys.
+  static func buildKeyReadResults(
+    keys: [String], successes: [Bool], values: [Float], errors: [String]
+  ) throws -> [KeyReadResult] {
+    guard successes.count == keys.count, values.count == keys.count, errors.count == keys.count
+    else {
+      let detail =
+        "requested=\(keys.count) successes=\(successes.count) "
+        + "values=\(values.count) errors=\(errors.count)"
+      throw SMCXPCError("Helper returned mismatched array lengths: \(detail)")
+    }
+    return keys.indices.map { index in
+      KeyReadResult(
+        key: keys[index],
+        success: successes[index],
+        value: values[index],
+        error: errors[index]
+      )
+    }
+  }
+
   public func enumerateKeys() async -> [String] {
     do { try await self.ensureOpened() } catch { return [] }
     let conn = self.ensureConnection()
