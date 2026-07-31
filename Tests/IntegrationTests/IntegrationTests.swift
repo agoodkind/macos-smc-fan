@@ -212,6 +212,15 @@ final class IntegrationTests: XCTestCase {
 
   /// Exercises `smcReadKeys` through the same `SMCFanXPCClient` the Fan Curve
   /// agent uses, comparing it against calling `readKey` once per key.
+  ///
+  /// The daemon under test is whichever build launchd currently has registered,
+  /// which on a developer machine is often a consumer app's copy rather than
+  /// this checkout. A daemon predating `smcReadKeys` does not answer that
+  /// selector at all, so this probes for it first and skips with an upgrade
+  /// message instead of failing for a stale-install reason. Reinstalling here
+  /// is not an option: `make uninstall-helper` runs `sfltool resetbtm`, which
+  /// resets Background Task Management for the whole machine and unregisters
+  /// every consumer app's daemon.
   func testReadKeys_MatchesPerKeyReads_AndFlagsMissingKey() async throws {
     let client = SMCFanXPCClient(clientName: "smcfan-integration-test")
     try await client.open()
@@ -223,6 +232,20 @@ final class IntegrationTests: XCTestCase {
     var expectedValues: [String: Float] = [:]
     for key in existingKeys {
       expectedValues[key] = try await client.readKey(key)
+    }
+
+    // Probe with a key every machine has. A per-key read of the same key just
+    // succeeded, so the connection is live and a throw here means the
+    // registered daemon does not implement smcReadKeys.
+    do {
+      _ = try await client.readKeys([existingKeys[0]])
+    } catch {
+      throw XCTSkip(
+        "Registered helper daemon does not answer smcReadKeys "
+          + "(\(error.localizedDescription)). It predates this change. "
+          + "Reinstall the helper built from this checkout with `make install`, "
+          + "or relaunch the consumer app that registers it, then retry."
+      )
     }
 
     let batchResults = try await client.readKeys(requestedKeys)
