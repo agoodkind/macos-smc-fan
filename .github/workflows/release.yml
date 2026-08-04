@@ -5,6 +5,15 @@ on:
     tags:
       - "[0-9]+.[0-9]+.[0-9]+"
   workflow_dispatch:
+    inputs:
+      release-track:
+        description: Release track.
+        required: false
+        default: stable
+        type: choice
+        options:
+          - stable
+          - prerelease
 
 # The caller must grant every permission the called workflow's jobs request.
 permissions:
@@ -17,6 +26,8 @@ jobs:
   release:
     uses: agoodkind/swift-makefile/.github/workflows/_release.yml@main
     with:
+      release-track: ${{ github.event_name == 'workflow_dispatch' && inputs.release-track || '' }}
+      release-on-merge: manual
       signing-identity-name: "Developer ID Application: Alex Goodkind (H3BMXM4W7H)"
       apple-team-id: H3BMXM4W7H
       notarize-pattern: "*.zip"
