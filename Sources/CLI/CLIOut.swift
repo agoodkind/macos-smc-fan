@@ -11,6 +11,7 @@
 
 import Foundation
 
+// periphery:ignore
 enum CLIOut {
   static func print(_ text: String) {
     FileHandle.standardOutput.write(Data((text + "\n").utf8))

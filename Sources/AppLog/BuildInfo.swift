@@ -12,15 +12,34 @@ import CryptoKit
 import Foundation
 
 public enum BuildInfo {
+  private static let buildHashLength = 12
+  private static let cachedExecutableHash = computeExecutableHash()
+
   nonisolated(unsafe) public static var commit = "unknown"
   nonisolated(unsafe) public static var version = "dev"
+  nonisolated(unsafe) public static var build = "unknown"
   nonisolated(unsafe) public static var dirty = "false"
 
+  public static func executableHash() -> String {
+    cachedExecutableHash
+  }
+
+  private static func computeExecutableHash() -> String {
+    guard let executable = Bundle.main.executableURL else {
+      return "unknown"
+    }
+    let bytes: Data
+    do {
+      bytes = try Data(contentsOf: executable)
+    } catch {
+      return "unknown"
+    }
+    return SHA256.hash(data: bytes)
+      .map { String(format: "%02x", $0) }
+      .joined()
+  }
+
   public static func buildHash() -> String {
-    guard let exe = Bundle.main.executableURL,
-      let data = try? Data(contentsOf: exe)
-    else { return "unknown" }
-    let digest = SHA256.hash(data: data)
-    return digest.prefix(6).map { String(format: "%02x", $0) }.joined()
+    String(executableHash().prefix(buildHashLength))
   }
 }

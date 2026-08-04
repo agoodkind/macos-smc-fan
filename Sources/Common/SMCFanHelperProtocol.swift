@@ -33,6 +33,49 @@ public struct FanInfo: Sendable {
   }
 }
 
+// MARK: - SMCFanHelperProtocolVersion
+
+public enum SMCFanHelperProtocolVersion {
+  public static let identity: UInt = 1
+}
+
+// MARK: - SMCFanHelperIdentity
+
+public struct SMCFanHelperIdentity: Codable, Equatable, Sendable {
+  public let version: String
+  public let build: String
+  public let commit: String
+  public let executableHash: String
+  public let protocolVersion: UInt
+
+  public init(
+    version: String,
+    build: String,
+    commit: String,
+    executableHash: String,
+    protocolVersion: UInt
+  ) {
+    self.version = version
+    self.build = build
+    self.commit = commit
+    self.executableHash = executableHash
+    self.protocolVersion = protocolVersion
+  }
+}
+
+// MARK: - SMCFanHelperIdentityReply
+
+public typealias SMCFanHelperIdentityReply =
+  @Sendable (
+    Bool,
+    String,
+    String,
+    String,
+    String,
+    UInt,
+    String?
+  ) -> Void
+
 /// Priority constants shared by every client that writes fans through
 /// `SMCFanXPCClient`. The helper arbitrates per fan by these values.
 /// Higher preempts lower while the incumbent is active. Constants are
@@ -48,13 +91,21 @@ public enum SMCFanPriority {
   public static let userBoost = 50
 }
 
+// MARK: - SMCFanHelperIdentityProtocol
+
+@objc public protocol SMCFanHelperIdentityProtocol {
+  func smcGetIdentity(reply: @escaping SMCFanHelperIdentityReply)
+}
+
+// MARK: - SMCFanHelperProtocol
+
 /// XPC protocol for SMC fan control operations.
 ///
 /// Reply signatures use primitive types only so the whole protocol crosses
 /// the NSXPCConnection boundary without a custom coder. Writes return a
 /// `preempted` flag in addition to `success` so callers can distinguish a
 /// priority rejection from an SMC failure.
-@objc public protocol SMCFanHelperProtocol {
+@objc public protocol SMCFanHelperProtocol: SMCFanHelperIdentityProtocol {
   /// Open connection to SMC
   func smcOpen(reply: @escaping @Sendable (Bool, String?) -> Void)
 

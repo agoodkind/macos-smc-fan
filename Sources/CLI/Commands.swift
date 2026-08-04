@@ -9,7 +9,6 @@
 import AppLog
 import Foundation
 import SMCFanKit
-import SMCFanProtocol
 import SMCFanXPCClient
 
 private let log = AppLog.make(category: "XPCClient")

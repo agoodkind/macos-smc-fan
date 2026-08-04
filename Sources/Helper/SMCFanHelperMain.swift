@@ -13,10 +13,11 @@ import SMCFanHelperCore
 @main
 enum SMCFanHelperMain {
   static func main() {
-    AppLog.bootstrap(subsystem: "io.goodkind.fan")
+    BuildInfo.version = generatedMarketingVersion
+    BuildInfo.build = generatedBuildNumber
     BuildInfo.commit = generatedGitCommit
-    BuildInfo.version = generatedGitVersion
     BuildInfo.dirty = generatedGitDirty
+    AppLog.bootstrap(subsystem: "io.goodkind.fan")
     autoreleasepool {
       let helper = SMCFanHelper(machServiceName: SMCFanConfiguration.default.helperBundleID)
       helper.start()
