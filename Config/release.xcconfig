@@ -5,8 +5,7 @@
 BUNDLE_ID_PREFIX = io.goodkind
 HELPER_BUNDLE_ID = io.goodkind.smcfanhelper
 APP_BUNDLE_ID = io.goodkind.SMCFanHelper
-MARKETING_VERSION = 0.4.0
-CURRENT_PROJECT_VERSION = 1
+#include "version.xcconfig"
 // Notarization requirements for Developer ID distribution: every Release
 // executable needs the hardened runtime, a secure timestamp on its signature,
 // and no injected get-task-allow debug entitlement. The notary service
