@@ -5,8 +5,7 @@
 BUNDLE_ID_PREFIX = io.goodkind
 HELPER_BUNDLE_ID = io.goodkind.smcfanhelper
 APP_BUNDLE_ID = io.goodkind.SMCFanHelper
-MARKETING_VERSION = 0.4.0
-CURRENT_PROJECT_VERSION = 1
+#include "version.xcconfig"
 #include? "local.xcconfig"
 SWIFT_OPTIMIZATION_LEVEL = -Onone
 SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG
