@@ -22,6 +22,7 @@ enum FanCountOutcome: Equatable, Sendable {
   case cancelled, watchdogExpired
   case failure(String)
   case timeout(String)
+  case transportFailure(String)
   case value(UInt)
 }
 
@@ -46,6 +47,8 @@ func fanCountOutcome(from requestTask: Task<UInt, Error>) async -> FanCountOutco
       .cancelled
     case .failure(let error as SMCXPCTimeoutError):
       .timeout(error.label)
+    case .failure(let error as SMCXPCTransportError):
+      .transportFailure(error.message)
     case .failure(let error):
       .failure(error.localizedDescription)
     }
