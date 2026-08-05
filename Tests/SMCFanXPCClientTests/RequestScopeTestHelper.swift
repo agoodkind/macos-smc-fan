@@ -34,6 +34,7 @@ final class RequestScopeTestHelper: NSObject, SMCFanHelperProtocol, @unchecked S
   }
 
   enum BasicReply {
+    case failure(String)
     case success
     case withhold
   }
@@ -102,8 +103,13 @@ final class RequestScopeTestHelper: NSObject, SMCFanHelperProtocol, @unchecked S
     storedCounts.open += 1
     lock.unlock()
     openRequestContinuation.yield()
-    if case .success = openReply {
+    switch openReply {
+    case .failure(let message):
+      reply(false, message)
+    case .success:
       reply(true, nil)
+    case .withhold:
+      break
     }
   }
 
@@ -135,8 +141,13 @@ final class RequestScopeTestHelper: NSObject, SMCFanHelperProtocol, @unchecked S
     storedCounts.fanCount += 1
     lock.unlock()
     fanCountRequestContinuation.yield()
-    if case .success = fanCountReply {
+    switch fanCountReply {
+    case .failure(let message):
+      reply(false, 0, message)
+    case .success:
       reply(true, requestTestFanCount, nil)
+    case .withhold:
+      break
     }
   }
 

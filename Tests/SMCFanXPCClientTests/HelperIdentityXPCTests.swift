@@ -77,8 +77,8 @@ struct HelperIdentityXPCTests {
     let requestTask = Task { try await client.getHelperIdentity() }
     let outcome = await identityOutcome(from: requestTask)
 
-    guard case .clientFailure = outcome else {
-      Issue.record("Expected client failure, got \(outcome)")
+    guard case .transportFailure = outcome else {
+      Issue.record("Expected transport failure, got \(outcome)")
       return
     }
   }
@@ -138,6 +138,7 @@ private enum IdentityOutcome: Equatable, Sendable {
   case clientFailure(String)
   case clientTimeout(String)
   case identity(SMCFanHelperIdentity)
+  case transportFailure(String)
   case unexpectedFailure(String)
   case watchdogExpired
 }
@@ -202,6 +203,8 @@ private func identityOutcome(
     return .clientTimeout(error.label)
   case .failure(let error as SMCXPCError):
     return .clientFailure(error.message)
+  case .failure(let error as SMCXPCTransportError):
+    return .transportFailure(error.message)
   case .failure(let error):
     return .unexpectedFailure(error.localizedDescription)
   }

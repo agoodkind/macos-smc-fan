@@ -208,6 +208,47 @@ struct RequestScopeXPCTests {
     #expect(await voidOutcome(from: requestTask) == .conflict("owned by lmd"))
   }
 
+  @Test("scoped helper rejection remains a helper error")
+  func scopedHelperRejectionRemainsHelperError() async {
+    let fixture = RequestScopeXPCFixture(
+      fanCountReply: .failure("Failed to open AppleSMC")
+    )
+    defer { fixture.shutdown() }
+    let scope = fixture.client.makeRequestScope()
+
+    let requestTask = Task { try await fixture.client.getFanCount(scope: scope) }
+
+    #expect(await fanCountOutcome(from: requestTask) == .failure("Failed to open AppleSMC"))
+  }
+
+  @Test("scoped proxy failure throws a transport error")
+  func scopedProxyFailureThrowsTransportError() async {
+    let helper = RequestScopeTestHelper(autoReply: .success)
+    let listener = NSXPCListener.anonymous()
+    defer { listener.invalidate() }
+    let client = SMCFanXPCClient(
+      remoteProxyFactory: { _, errorHandler in
+        errorHandler(
+          NSError(
+            domain: NSCocoaErrorDomain,
+            code: NSXPCConnectionInterrupted,
+            userInfo: [NSLocalizedDescriptionKey: "Connection interrupted"]
+          )
+        )
+        return helper
+      },
+      connectionFactory: { NSXPCConnection(listenerEndpoint: listener.endpoint) }
+    )
+    let scope = client.makeRequestScope()
+    let requestTask = Task { try await client.getFanCount(scope: scope) }
+
+    #expect(
+      await fanCountOutcome(from: requestTask)
+        == .transportFailure("Connection interrupted")
+    )
+    client.shutdown()
+  }
+
   @Test("cancellation after dispatch resumes once and ignores a late reply")
   func cancellationAfterDispatchResumesOnceAndIgnoresLateReply() async {
     let fixture = RequestScopeXPCFixture(autoReply: .withhold)

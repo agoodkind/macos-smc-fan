@@ -24,6 +24,18 @@ public struct SMCXPCError: LocalizedError, Sendable {
   }
 }
 
+// MARK: - SMCXPCTransportError
+
+public struct SMCXPCTransportError: LocalizedError, Sendable {
+  public let message: String
+
+  public var errorDescription: String? { message }
+
+  public init(_ message: String?) {
+    self.message = message ?? "Unknown XPC transport error"
+  }
+}
+
 /// Thrown when a sync call exceeds its bounded wait.
 public struct SMCXPCTimeoutError: LocalizedError, Sendable {
   public let label: String
@@ -730,14 +742,14 @@ public final class SMCFanXPCClient: @unchecked Sendable {
   ) {
     let xpcConnection = self.ensureConnection()
     let proxy = xpcConnection.remoteObjectProxyWithErrorHandler { error in
-      requestState.complete(with: .failure(SMCXPCError(error.localizedDescription))) {
+      requestState.complete(with: .failure(SMCXPCTransportError(error.localizedDescription))) {
         log.error(
           "xpc.helper_identity.proxy_failed error=\(error.localizedDescription, privacy: .public)"
         )
       }
     }
     guard let helper = proxy as? SMCFanHelperProtocol else {
-      requestState.complete(with: .failure(SMCXPCError("Failed to get proxy"))) {
+      requestState.complete(with: .failure(SMCXPCTransportError("Failed to get proxy"))) {
         log.error("xpc.helper_identity.proxy_unavailable")
       }
       return
@@ -809,12 +821,12 @@ public final class SMCFanXPCClient: @unchecked Sendable {
           log.error(
             "xpc.proxy_error op=getFanInfo fan=\(index, privacy: .public) error=\(error.localizedDescription, privacy: .public)"
           )
-          continuation.resume(throwing: SMCXPCError(error.localizedDescription))
+          continuation.resume(throwing: SMCXPCTransportError(error.localizedDescription))
         }
       }
       guard let typedProxy = proxy as? SMCFanHelperProtocol else {
         once.tryResume {
-          continuation.resume(throwing: SMCXPCError("Failed to get proxy"))
+          continuation.resume(throwing: SMCXPCTransportError("Failed to get proxy"))
         }
         return
       }
@@ -914,12 +926,12 @@ public final class SMCFanXPCClient: @unchecked Sendable {
           log.error(
             "xpc.proxy_error op=readKeys error=\(error.localizedDescription, privacy: .public)"
           )
-          continuation.resume(throwing: SMCXPCError(error.localizedDescription))
+          continuation.resume(throwing: SMCXPCTransportError(error.localizedDescription))
         }
       }
       guard let typedProxy = proxy as? SMCFanHelperProtocol else {
         once.tryResume {
-          continuation.resume(throwing: SMCXPCError("Failed to get proxy"))
+          continuation.resume(throwing: SMCXPCTransportError("Failed to get proxy"))
         }
         return
       }
@@ -996,11 +1008,13 @@ public final class SMCFanXPCClient: @unchecked Sendable {
       let once = ResumeGuard()
       let proxy = conn.remoteObjectProxyWithErrorHandler { error in
         once.tryResume {
-          continuation.resume(throwing: SMCXPCError(error.localizedDescription))
+          continuation.resume(throwing: SMCXPCTransportError(error.localizedDescription))
         }
       }
       guard let typedProxy = proxy as? SMCFanHelperProtocol else {
-        once.tryResume { continuation.resume(throwing: SMCXPCError("Failed to get proxy")) }
+        once.tryResume {
+          continuation.resume(throwing: SMCXPCTransportError("Failed to get proxy"))
+        }
         return
       }
       typedProxy.smcRegisterClient(name: name) { success, message in
@@ -1023,11 +1037,13 @@ public final class SMCFanXPCClient: @unchecked Sendable {
       let once = ResumeGuard()
       let proxy = conn.remoteObjectProxyWithErrorHandler { error in
         once.tryResume {
-          continuation.resume(throwing: SMCXPCError(error.localizedDescription))
+          continuation.resume(throwing: SMCXPCTransportError(error.localizedDescription))
         }
       }
       guard let typedProxy = proxy as? SMCFanHelperProtocol else {
-        once.tryResume { continuation.resume(throwing: SMCXPCError("Failed to get proxy")) }
+        once.tryResume {
+          continuation.resume(throwing: SMCXPCTransportError("Failed to get proxy"))
+        }
         return
       }
       typedProxy.smcGetOwnership { fans, names, priorities, ages in
@@ -1089,7 +1105,7 @@ public final class SMCFanXPCClient: @unchecked Sendable {
     }
     let proxy = connection.remoteObjectProxyWithErrorHandler(errorHandler)
     guard let typedProxy = proxy as? SMCFanHelperProtocol else {
-      throw SMCXPCError("Failed to get proxy")
+      throw SMCXPCTransportError("Failed to get proxy")
     }
     dispatch(typedProxy)
   }
@@ -1216,7 +1232,7 @@ public final class SMCFanXPCClient: @unchecked Sendable {
     if scope.state.isCancelled {
       return CancellationError()
     }
-    return SMCXPCError(error.localizedDescription)
+    return SMCXPCTransportError(error.localizedDescription)
   }
 
   private func scopedReplyError(_ error: String?, scope: SMCFanXPCRequestScope) -> Error {
@@ -1338,7 +1354,7 @@ public final class SMCFanXPCClient: @unchecked Sendable {
               log.error(
                 "xpc.proxy_error error=\(error.localizedDescription, privacy: .public)"
               )
-              continuation.resume(throwing: SMCXPCError(error.localizedDescription))
+              continuation.resume(throwing: SMCXPCTransportError(error.localizedDescription))
             }
           },
           dispatch: { proxy in
@@ -1389,7 +1405,7 @@ public final class SMCFanXPCClient: @unchecked Sendable {
               log.error(
                 "xpc.proxy_error error=\(error.localizedDescription, privacy: .public)"
               )
-              continuation.resume(throwing: SMCXPCError(error.localizedDescription))
+              continuation.resume(throwing: SMCXPCTransportError(error.localizedDescription))
             }
           },
           dispatch: { proxy in
@@ -1436,7 +1452,7 @@ public final class SMCFanXPCClient: @unchecked Sendable {
               log.error(
                 "xpc.proxy_error op=\(opLabel, privacy: .public) error=\(error.localizedDescription, privacy: .public)"
               )
-              continuation.resume(throwing: SMCXPCError(error.localizedDescription))
+              continuation.resume(throwing: SMCXPCTransportError(error.localizedDescription))
             }
           },
           dispatch: { proxy in
@@ -1493,12 +1509,12 @@ public final class SMCFanXPCClient: @unchecked Sendable {
         log.error(
           "xpc.proxy_error op=getFanInfoSync fan=\(index, privacy: .public) error=\(error.localizedDescription, privacy: .public)"
         )
-        errBox.error = SMCXPCError(error.localizedDescription)
+        errBox.error = SMCXPCTransportError(error.localizedDescription)
         sem.signal()
       }
     }
     guard let typedProxy = proxy as? SMCFanHelperProtocol else {
-      throw SMCXPCError("Failed to get proxy")
+      throw SMCXPCTransportError("Failed to get proxy")
     }
     typedProxy.smcGetFanInfo(index) { success, actual, target, min, max, manual, error in
       once.tryResume {
@@ -1574,12 +1590,12 @@ public final class SMCFanXPCClient: @unchecked Sendable {
         log.error(
           "xpc.proxy_error op=\(label, privacy: .public) error=\(error.localizedDescription, privacy: .public)"
         )
-        errBox.error = SMCXPCError(error.localizedDescription)
+        errBox.error = SMCXPCTransportError(error.localizedDescription)
         sem.signal()
       }
     }
     guard let typedProxy = proxy as? SMCFanHelperProtocol else {
-      throw SMCXPCError("Failed to get proxy")
+      throw SMCXPCTransportError("Failed to get proxy")
     }
     block(typedProxy) { success, error in
       once.tryResume {
@@ -1611,12 +1627,12 @@ public final class SMCFanXPCClient: @unchecked Sendable {
         log.error(
           "xpc.proxy_error op=\(label, privacy: .public) error=\(error.localizedDescription, privacy: .public)"
         )
-        errBox.error = SMCXPCError(error.localizedDescription)
+        errBox.error = SMCXPCTransportError(error.localizedDescription)
         sem.signal()
       }
     }
     guard let typedProxy = proxy as? SMCFanHelperProtocol else {
-      throw SMCXPCError("Failed to get proxy")
+      throw SMCXPCTransportError("Failed to get proxy")
     }
     block(typedProxy) { success, preempted, error in
       once.tryResume {
