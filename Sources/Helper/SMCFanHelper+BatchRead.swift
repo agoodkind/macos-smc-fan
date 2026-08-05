@@ -9,9 +9,19 @@
 import SMCFanKit
 import SMCKit
 
-// MARK: - Batch key read
+// MARK: - Connection and batch key reads
 
 extension SMCFanHelper {
+  // Internal so the protocol entry point in SMCFanHelper.swift can share
+  // connection setup with batch reads.
+  func ensureConnected() throws {
+    if fanController == nil {
+      let conn = try SMCConnection()
+      fanController = FanController(connection: conn)
+      log.debug("smc.connection.established")
+    }
+  }
+
   /// Reads multiple SMC keys in a single XPC round trip. See
   /// `SMCFanHelperProtocol.smcReadKeys` for the reply array contract: three
   /// arrays the same length as `keys`, one entry per requested key.

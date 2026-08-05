@@ -79,19 +79,23 @@ public final class SMCFanHelper: NSObject, NSXPCListenerDelegate, SMCFanHelperPr
     return true
   }
 
-  // MARK: - Connection Management
-
-  // Internal (not private) so SMCFanHelper+BatchRead.swift, in the same
-  // target, can establish the connection before a batch read.
-  func ensureConnected() throws {
-    if fanController == nil {
-      let conn = try SMCConnection()
-      fanController = FanController(connection: conn)
-      log.debug("smc.connection.established")
-    }
-  }
-
   // MARK: - SMCFanHelperProtocol
+
+  public func smcGetIdentity(reply: SMCFanProtocol.SMCFanHelperIdentityReply) {
+    let identityHash = BuildInfo.executableHash()
+    log.info(
+      "helper.identity.returned protocol=\(SMCFanProtocol.SMCFanHelperProtocolVersion.identity, privacy: .public)"
+    )
+    reply(
+      true,
+      BuildInfo.version,
+      BuildInfo.build,
+      BuildInfo.commit,
+      identityHash,
+      SMCFanProtocol.SMCFanHelperProtocolVersion.identity,
+      nil
+    )
+  }
 
   public func smcOpen(reply: (Bool, String?) -> Void) {
     do {

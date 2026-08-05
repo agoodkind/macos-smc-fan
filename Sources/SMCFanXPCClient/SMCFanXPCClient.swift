@@ -98,6 +98,43 @@ final class ResumeGuard: @unchecked Sendable {
   }
 }
 
+// MARK: - IdentityRequestState
+
+private final class IdentityRequestState: @unchecked Sendable {
+  private let once = ResumeGuard()
+  private let lock = NSLock()
+  private var continuation: CheckedContinuation<SMCFanHelperIdentity, Error>?
+  private var pendingResult: Result<SMCFanHelperIdentity, Error>?
+
+  func install(_ continuation: CheckedContinuation<SMCFanHelperIdentity, Error>) {
+    lock.lock()
+    if let pendingResult {
+      lock.unlock()
+      continuation.resume(with: pendingResult)
+      return
+    }
+    self.continuation = continuation
+    lock.unlock()
+  }
+
+  func complete(
+    with result: Result<SMCFanHelperIdentity, Error>,
+    onWinning: () -> Void
+  ) {
+    once.tryResume {
+      onWinning()
+      lock.lock()
+      let installedContinuation = self.continuation
+      self.continuation = nil
+      if installedContinuation == nil {
+        pendingResult = result
+      }
+      lock.unlock()
+      installedContinuation?.resume(with: result)
+    }
+  }
+}
+
 // MARK: - Client
 
 /// XPC client for the privileged SMC fan helper.
@@ -119,6 +156,9 @@ public final class SMCFanXPCClient: @unchecked Sendable {
   /// thrown. Chosen so first call authorization on a fresh privileged
   /// connection has room to complete.
   public static let defaultSyncTimeout: TimeInterval = 5.0
+  public static let defaultIdentityTimeout: TimeInterval = 2.0
+
+  private static let identityOperationLabel = "getHelperIdentity"
 
   public struct OwnershipEntry: Sendable {
     public let fanIndex: UInt
@@ -140,8 +180,10 @@ public final class SMCFanXPCClient: @unchecked Sendable {
 
   private let helperBundleID: String
   private let syncTimeout: TimeInterval
+  private let identityTimeout: TimeInterval
   private let clientName: String?
   private let defaultPriority: Int
+  private let connectionFactory: (() -> NSXPCConnection)?
   private let lock = NSLock()
   private var connection: NSXPCConnection?
   private var smcOpened = false
@@ -154,10 +196,27 @@ public final class SMCFanXPCClient: @unchecked Sendable {
   ) {
     self.helperBundleID = SMCFanConfiguration.default.helperBundleID
     self.syncTimeout = syncTimeout
+    self.identityTimeout = SMCFanXPCClient.defaultIdentityTimeout
     self.clientName = clientName
     self.defaultPriority = defaultPriority
+    self.connectionFactory = nil
     log.debug(
-      "xpc.client_init bundle_id=\(self.helperBundleID, privacy: .public) client_name=\(clientName ?? "<none>", privacy: .public) default_priority=\(defaultPriority, privacy: .public) sync_timeout=\(self.syncTimeout, privacy: .public)"
+      "xpc.client_init bundle_id=\(self.helperBundleID, privacy: .public) client_name=\(clientName ?? "<none>", privacy: .public) default_priority=\(defaultPriority, privacy: .public) sync_timeout=\(self.syncTimeout, privacy: .public) identity_timeout=\(self.identityTimeout, privacy: .public)"
+    )
+  }
+
+  init(
+    identityTimeout: TimeInterval = SMCFanXPCClient.defaultIdentityTimeout,
+    connectionFactory: @escaping () -> NSXPCConnection
+  ) {
+    self.helperBundleID = SMCFanConfiguration.default.helperBundleID
+    self.syncTimeout = SMCFanXPCClient.defaultSyncTimeout
+    self.identityTimeout = identityTimeout
+    self.clientName = nil
+    self.defaultPriority = SMCFanPriority.curveNormal
+    self.connectionFactory = connectionFactory
+    log.debug(
+      "xpc.client_init bundle_id=anonymous client_name=<none> default_priority=\(self.defaultPriority, privacy: .public) sync_timeout=\(self.syncTimeout, privacy: .public) identity_timeout=\(self.identityTimeout, privacy: .public)"
     )
   }
 
@@ -190,10 +249,15 @@ public final class SMCFanXPCClient: @unchecked Sendable {
       self.lock.unlock()
       return conn
     }
-    let conn = NSXPCConnection(
-      machServiceName: self.helperBundleID,
-      options: .privileged
-    )
+    let conn: NSXPCConnection
+    if let connectionFactory {
+      conn = connectionFactory()
+    } else {
+      conn = NSXPCConnection(
+        machServiceName: self.helperBundleID,
+        options: .privileged
+      )
+    }
     conn.remoteObjectInterface = NSXPCInterface(with: SMCFanHelperProtocol.self)
 
     conn.interruptionHandler = { [weak self] in
@@ -303,6 +367,99 @@ public final class SMCFanXPCClient: @unchecked Sendable {
   }
 
   // MARK: - Async API
+
+  public func getHelperIdentity() async throws -> SMCFanHelperIdentity {
+    let requestTimeout = self.identityTimeout
+    let requestState = IdentityRequestState()
+    log.debug(
+      "xpc.helper_identity.request timeout_seconds=\(requestTimeout, privacy: .public)"
+    )
+    return try await withTaskCancellationHandler {
+      try await self.performHelperIdentityRequest(
+        requestState: requestState,
+        timeout: requestTimeout
+      )
+    } onCancel: {
+      Self.cancelHelperIdentityRequest(requestState)
+    }
+  }
+
+  private func performHelperIdentityRequest(
+    requestState: IdentityRequestState,
+    timeout: TimeInterval
+  ) async throws -> SMCFanHelperIdentity {
+    try Task.checkCancellation()
+    return try await withCheckedThrowingContinuation { continuation in
+      requestState.install(continuation)
+      guard !Task.isCancelled else {
+        Self.cancelHelperIdentityRequest(requestState)
+        return
+      }
+      self.scheduleHelperIdentityTimeout(requestState: requestState, timeout: timeout)
+      self.sendHelperIdentityRequest(requestState: requestState)
+    }
+  }
+
+  private func scheduleHelperIdentityTimeout(
+    requestState: IdentityRequestState,
+    timeout: TimeInterval
+  ) {
+    DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + timeout) {
+      let timeoutError = SMCXPCTimeoutError(
+        label: Self.identityOperationLabel,
+        seconds: timeout
+      )
+      requestState.complete(with: .failure(timeoutError)) {
+        log.error("xpc.helper_identity.timed_out seconds=\(timeout, privacy: .public)")
+      }
+    }
+  }
+
+  private func sendHelperIdentityRequest(requestState: IdentityRequestState) {
+    let xpcConnection = self.ensureConnection()
+    let proxy = xpcConnection.remoteObjectProxyWithErrorHandler { error in
+      requestState.complete(with: .failure(SMCXPCError(error.localizedDescription))) {
+        log.error(
+          "xpc.helper_identity.proxy_failed error=\(error.localizedDescription, privacy: .public)"
+        )
+      }
+    }
+    guard let helper = proxy as? SMCFanHelperProtocol else {
+      requestState.complete(with: .failure(SMCXPCError("Failed to get proxy"))) {
+        log.error("xpc.helper_identity.proxy_unavailable")
+      }
+      return
+    }
+    helper.smcGetIdentity { success, version, build, commit, hash, protocolVersion, error in
+      guard success else {
+        let requestError = SMCXPCError(error)
+        requestState.complete(with: .failure(requestError)) {
+          log.error(
+            "xpc.helper_identity.rejected error=\(requestError.localizedDescription, privacy: .public)"
+          )
+        }
+        return
+      }
+      let identity = SMCFanHelperIdentity(
+        version: version,
+        build: build,
+        commit: commit,
+        executableHash: hash,
+        protocolVersion: protocolVersion
+      )
+      requestState.complete(with: .success(identity)) {
+        log.info(
+          "xpc.helper_identity.succeeded version=\(version, privacy: .public) build=\(build, privacy: .public) commit=\(commit, privacy: .public) protocol=\(protocolVersion, privacy: .public)"
+        )
+      }
+    }
+  }
+
+  private static func cancelHelperIdentityRequest(_ requestState: IdentityRequestState) {
+    requestState.complete(with: .failure(CancellationError())) {
+      log.debug("xpc.helper_identity.cancelled")
+    }
+  }
 
   public func open() async throws {
     try await self.ensureOpened()

@@ -8,6 +8,7 @@
 
 import Foundation
 
+// periphery:ignore
 /// Hardware-specific behavioral expectations for integration tests.
 /// Each model's expectations are stored as a plist in Tests/IntegrationTests/Fixtures/.
 ///
@@ -109,6 +110,7 @@ enum AutoModeTargetBehavior: Codable, Sendable {
   }
 }
 
+// periphery:ignore
 extension HardwareExpectations {
 
   /// Load expectations for the current hardware from the Fixtures directory.

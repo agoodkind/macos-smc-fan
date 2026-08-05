@@ -1,5 +1,7 @@
 // Auto-generated from xcconfig build settings. Do not edit.
 let generatedHelperBundleID = "@@HELPER_BUNDLE_ID@@"
+let generatedMarketingVersion = "@@MARKETING_VERSION@@"
+let generatedBuildNumber = "@@CURRENT_PROJECT_VERSION@@"
 let generatedGitCommit = "@@GIT_COMMIT@@"
 let generatedGitVersion = "@@GIT_VERSION@@"
 let generatedGitDirty = "@@GIT_DIRTY@@"

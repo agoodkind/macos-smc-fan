@@ -21,6 +21,8 @@ find "${TEMPLATES_DIR}" -name '*.template' | while read -r template; do
     -e "s|@@APP_BUNDLE_ID@@|${APP_BUNDLE_ID}|g" \
     -e "s|@@DEVELOPMENT_TEAM@@|${DEVELOPMENT_TEAM}|g" \
     -e "s|@@BUNDLE_ID_PREFIX@@|${BUNDLE_ID_PREFIX}|g" \
+    -e "s|@@MARKETING_VERSION@@|${MARKETING_VERSION}|g" \
+    -e "s|@@CURRENT_PROJECT_VERSION@@|${CURRENT_PROJECT_VERSION}|g" \
     -e "s|@@GIT_COMMIT@@|${GIT_COMMIT}|g" \
     -e "s|@@GIT_VERSION@@|${GIT_VERSION}|g" \
     -e "s|@@GIT_DIRTY@@|${GIT_DIRTY}|g" \
