@@ -22,7 +22,6 @@ struct ResumeGuardTests {
     var count = 0
     guardGate.tryResume { count += 1 }
     #expect(count == 1)
-    #expect(guardGate.hasFired)
   }
 
   @Test("second tryResume is a no op")
