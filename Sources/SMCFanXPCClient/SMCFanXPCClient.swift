@@ -89,24 +89,17 @@ final class ResumeGuard: @unchecked Sendable {
     action()
   }
 
-  /// Observable state for tests. Do not use in production code paths.
-  var hasFired: Bool {
-    lock.lock()
-    let current = fired
-    lock.unlock()
-    return current
-  }
 }
 
-// MARK: - IdentityRequestState
+// MARK: - AsyncRequestState
 
-private final class IdentityRequestState: @unchecked Sendable {
+private final class AsyncRequestState<Value: Sendable>: @unchecked Sendable {
   private let once = ResumeGuard()
   private let lock = NSLock()
-  private var continuation: CheckedContinuation<SMCFanHelperIdentity, Error>?
-  private var pendingResult: Result<SMCFanHelperIdentity, Error>?
+  private var continuation: CheckedContinuation<Value, Error>?
+  private var pendingResult: Result<Value, Error>?
 
-  func install(_ continuation: CheckedContinuation<SMCFanHelperIdentity, Error>) {
+  func install(_ continuation: CheckedContinuation<Value, Error>) {
     lock.lock()
     if let pendingResult {
       lock.unlock()
@@ -118,33 +111,179 @@ private final class IdentityRequestState: @unchecked Sendable {
   }
 
   func complete(
-    with result: Result<SMCFanHelperIdentity, Error>,
+    with result: Result<Value, Error>,
     onWinning: () -> Void
   ) {
     once.tryResume {
       onWinning()
-      lock.lock()
-      let installedContinuation = self.continuation
-      self.continuation = nil
-      if installedContinuation == nil {
-        pendingResult = result
-      }
-      lock.unlock()
-      installedContinuation?.resume(with: result)
+      self.resume(with: result)
     }
   }
+
+  func complete(with result: Result<Value, Error>) {
+    once.tryResume {
+      self.resume(with: result)
+    }
+  }
+
+  private func resume(with result: Result<Value, Error>) {
+    lock.lock()
+    let installedContinuation = self.continuation
+    self.continuation = nil
+    if installedContinuation == nil {
+      pendingResult = result
+    }
+    lock.unlock()
+    installedContinuation?.resume(with: result)
+  }
+}
+
+// MARK: - RequestScopeState
+
+final class RequestScopeState: @unchecked Sendable {
+  enum CancellationResult {
+    case alreadyCancelled
+    case cancelled(NSXPCConnection?)
+    case foreignOwner
+  }
+
+  let identifier: UInt64
+
+  private let lock = NSLock()
+  private let owner: ObjectIdentifier
+  private var connection: NSXPCConnection?
+  private var opened = false
+  private var registered = false
+  private var cancelled = false
+
+  init(identifier: UInt64, owner: ObjectIdentifier, connection: NSXPCConnection) {
+    self.identifier = identifier
+    self.owner = owner
+    self.connection = connection
+  }
+
+  init(cancelledIdentifier identifier: UInt64, owner: ObjectIdentifier) {
+    self.identifier = identifier
+    self.owner = owner
+    self.connection = nil
+    self.cancelled = true
+  }
+
+  deinit {
+    lock.lock()
+    let ownedConnection = self.connection
+    self.connection = nil
+    lock.unlock()
+    ownedConnection?.invalidate()
+  }
+
+  var isCancelled: Bool {
+    lock.lock()
+    let current = cancelled
+    lock.unlock()
+    return current
+  }
+
+  func cancel(owner expectedOwner: ObjectIdentifier) -> CancellationResult {
+    lock.lock()
+    guard owner == expectedOwner else {
+      lock.unlock()
+      return .foreignOwner
+    }
+    guard !cancelled else {
+      lock.unlock()
+      return .alreadyCancelled
+    }
+    cancelled = true
+    let cancelledConnection = self.connection
+    self.connection = nil
+    opened = false
+    registered = false
+    lock.unlock()
+    return .cancelled(cancelledConnection)
+  }
+
+  func isOpened(owner expectedOwner: ObjectIdentifier) throws -> Bool {
+    try withActiveScope(owner: expectedOwner) { opened }
+  }
+
+  func markOpened(owner expectedOwner: ObjectIdentifier) throws {
+    try withActiveScope(owner: expectedOwner) { opened = true }
+  }
+
+  func isRegistered(owner expectedOwner: ObjectIdentifier) throws -> Bool {
+    try withActiveScope(owner: expectedOwner) { registered }
+  }
+
+  func markRegistered(owner expectedOwner: ObjectIdentifier) throws {
+    try withActiveScope(owner: expectedOwner) { registered = true }
+  }
+
+  func claimConnection(owner expectedOwner: ObjectIdentifier) throws -> NSXPCConnection {
+    try withActiveScope(owner: expectedOwner) {
+      guard let connection else {
+        throw CancellationError()
+      }
+      return connection
+    }
+  }
+
+  func connectionInterrupted(_ interruptedConnection: NSXPCConnection) {
+    lock.lock()
+    if connection === interruptedConnection {
+      opened = false
+      registered = false
+    }
+    lock.unlock()
+  }
+
+  func connectionInvalidated(_ invalidatedConnection: NSXPCConnection) {
+    lock.lock()
+    if connection === invalidatedConnection {
+      connection = nil
+      opened = false
+      registered = false
+      cancelled = true
+    }
+    lock.unlock()
+  }
+
+  private func withActiveScope<Value>(
+    owner expectedOwner: ObjectIdentifier,
+    _ operation: () throws -> Value
+  ) throws -> Value {
+    lock.lock()
+    defer { lock.unlock() }
+    guard owner == expectedOwner, !cancelled else {
+      throw CancellationError()
+    }
+    return try operation()
+  }
+}
+
+// MARK: - WeakRequestScopeState
+
+private struct WeakRequestScopeState {
+  weak var state: RequestScopeState?
+}
+
+// MARK: - SMCFanXPCRequestScope
+
+public struct SMCFanXPCRequestScope: Sendable {
+  let state: RequestScopeState
 }
 
 // MARK: - Client
 
 /// XPC client for the privileged SMC fan helper.
 ///
-/// Safe for long running daemons. The client holds a single NSXPCConnection
-/// that is recreated lazily on the next call after invalidation or
-/// interruption. Every call uses a fresh per call proxy via
-/// `remoteObjectProxyWithErrorHandler`. A `ResumeGuard` ensures the
-/// continuation or the semaphore receives exactly one signal, whether the
-/// reply fires or the error handler fires first.
+/// Safe for long running daemons. Unscoped calls share one NSXPCConnection.
+/// Each request scope eagerly owns one isolated connection and becomes terminal
+/// after cancellation or invalidation. The shared unscoped connection is
+/// recreated lazily after invalidation. Every call uses a fresh per call proxy
+/// via `remoteObjectProxyWithErrorHandler`. A
+/// `ResumeGuard` ensures the continuation or semaphore receives exactly one
+/// signal, whether the reply or error handler fires first.
 ///
 /// Every write carries a priority. The helper arbitrates: higher priority
 /// preempts a current owner, lower priority is rejected with an
@@ -183,89 +322,209 @@ public final class SMCFanXPCClient: @unchecked Sendable {
   private let identityTimeout: TimeInterval
   private let clientName: String?
   private let defaultPriority: Int
-  private let connectionFactory: (() -> NSXPCConnection)?
+  private let connectionFactory: () -> NSXPCConnection
+  private let remoteProxyFactory:
+    ((NSXPCConnection, @escaping @Sendable (Error) -> Void) -> SMCFanHelperProtocol)?
+  private let beforeConnectionClaim: (@Sendable () async -> Void)?
+  private let beforeRequestScopeRegistration: (@Sendable () -> Void)?
+  private let afterScopedRequestCompletion: (@Sendable () async -> Void)?
   private let lock = NSLock()
   private var connection: NSXPCConnection?
+  private var nextRequestScopeIdentifier: UInt64 = 0
+  private var requestScopeStates: [WeakRequestScopeState] = []
+  private var requestScopesShutDown = false
   private var smcOpened = false
   private var registered = false
 
-  public init(
+  public convenience init(
     clientName: String? = nil,
     defaultPriority: Int = SMCFanPriority.curveNormal,
     syncTimeout: TimeInterval = SMCFanXPCClient.defaultSyncTimeout
   ) {
-    self.helperBundleID = SMCFanConfiguration.default.helperBundleID
-    self.syncTimeout = syncTimeout
-    self.identityTimeout = SMCFanXPCClient.defaultIdentityTimeout
-    self.clientName = clientName
-    self.defaultPriority = defaultPriority
-    self.connectionFactory = nil
-    log.debug(
-      "xpc.client_init bundle_id=\(self.helperBundleID, privacy: .public) client_name=\(clientName ?? "<none>", privacy: .public) default_priority=\(defaultPriority, privacy: .public) sync_timeout=\(self.syncTimeout, privacy: .public) identity_timeout=\(self.identityTimeout, privacy: .public)"
-    )
+    let configuredHelperBundleID = SMCFanConfiguration.default.helperBundleID
+    self.init(
+      clientName: clientName,
+      defaultPriority: defaultPriority,
+      syncTimeout: syncTimeout,
+      identityTimeout: SMCFanXPCClient.defaultIdentityTimeout,
+      connectionLogLabel: configuredHelperBundleID
+    ) {
+      NSXPCConnection(machServiceName: configuredHelperBundleID, options: .privileged)
+    }
   }
 
   init(
+    clientName: String? = nil,
+    defaultPriority: Int = SMCFanPriority.curveNormal,
+    syncTimeout: TimeInterval = SMCFanXPCClient.defaultSyncTimeout,
     identityTimeout: TimeInterval = SMCFanXPCClient.defaultIdentityTimeout,
+    beforeConnectionClaim: (@Sendable () async -> Void)? = nil,
+    beforeRequestScopeRegistration: (@Sendable () -> Void)? = nil,
+    afterScopedRequestCompletion: (@Sendable () async -> Void)? = nil,
+    connectionLogLabel: String = "anonymous",
+    remoteProxyFactory:
+      ((NSXPCConnection, @escaping @Sendable (Error) -> Void) -> SMCFanHelperProtocol)? = nil,
     connectionFactory: @escaping () -> NSXPCConnection
   ) {
     self.helperBundleID = SMCFanConfiguration.default.helperBundleID
-    self.syncTimeout = SMCFanXPCClient.defaultSyncTimeout
+    self.syncTimeout = syncTimeout
     self.identityTimeout = identityTimeout
-    self.clientName = nil
-    self.defaultPriority = SMCFanPriority.curveNormal
+    self.clientName = clientName
+    self.defaultPriority = defaultPriority
     self.connectionFactory = connectionFactory
+    self.remoteProxyFactory = remoteProxyFactory
+    self.beforeConnectionClaim = beforeConnectionClaim
+    self.beforeRequestScopeRegistration = beforeRequestScopeRegistration
+    self.afterScopedRequestCompletion = afterScopedRequestCompletion
     log.debug(
-      "xpc.client_init bundle_id=anonymous client_name=<none> default_priority=\(self.defaultPriority, privacy: .public) sync_timeout=\(self.syncTimeout, privacy: .public) identity_timeout=\(self.identityTimeout, privacy: .public)"
+      "xpc.client_init bundle_id=\(connectionLogLabel, privacy: .public) client_name=\(clientName ?? "<none>", privacy: .public) default_priority=\(self.defaultPriority, privacy: .public) sync_timeout=\(self.syncTimeout, privacy: .public) identity_timeout=\(self.identityTimeout, privacy: .public)"
     )
   }
 
   deinit {
-    self.lock.lock()
-    let conn = self.connection
-    self.connection = nil
-    self.lock.unlock()
-    conn?.invalidate()
+    for activeConnection in self.takeConnectionsForShutdown() {
+      activeConnection.invalidate()
+    }
   }
 
-  /// Explicit teardown for callers that need to release the connection before
-  /// process exit. Safe to call more than once.
+  /// Explicit teardown for callers that need to release connections before
+  /// process exit. Safe to call more than once. Request scopes created after
+  /// shutdown are terminal and do not create connections.
   public func shutdown() {
+    let connections = self.takeConnectionsForShutdown()
+    for activeConnection in connections {
+      activeConnection.invalidate()
+    }
+    log.debug("xpc.client_shutdown connections=\(connections.count, privacy: .public)")
+  }
+
+  private func takeConnectionsForShutdown() -> [NSXPCConnection] {
     self.lock.lock()
-    let conn = self.connection
+    self.requestScopesShutDown = true
+    let unscopedConnection = self.connection
     self.connection = nil
     self.smcOpened = false
     self.registered = false
+    let scopeStates = self.requestScopeStates.compactMap(\.state)
+    self.requestScopeStates.removeAll()
     self.lock.unlock()
-    conn?.invalidate()
-    log.debug("xpc.client_shutdown")
+
+    var connections = scopeStates.compactMap { state -> NSXPCConnection? in
+      guard case .cancelled(let connection) = state.cancel(owner: ObjectIdentifier(self)) else {
+        return nil
+      }
+      return connection
+    }
+    if let unscopedConnection {
+      connections.append(unscopedConnection)
+    }
+    return connections
+  }
+
+  public func makeRequestScope() -> SMCFanXPCRequestScope {
+    self.lock.lock()
+    let identifier = self.nextRequestScopeIdentifier
+    self.nextRequestScopeIdentifier &+= 1
+    let scopesAlreadyShutDown = self.requestScopesShutDown
+    self.lock.unlock()
+
+    if scopesAlreadyShutDown {
+      let state = RequestScopeState(
+        cancelledIdentifier: identifier,
+        owner: ObjectIdentifier(self)
+      )
+      log.debug(
+        "xpc.request_scope.creation_cancelled scope_id=\(identifier, privacy: .public) reason=client_shutdown action=return_cancelled_scope"
+      )
+      return SMCFanXPCRequestScope(state: state)
+    }
+
+    let scopedConnection = self.makeConnection()
+    scopedConnection.remoteObjectInterface = NSXPCInterface(with: SMCFanHelperProtocol.self)
+    let state = RequestScopeState(
+      identifier: identifier,
+      owner: ObjectIdentifier(self),
+      connection: scopedConnection
+    )
+    scopedConnection.interruptionHandler = { [weak state, weak scopedConnection] in
+      log.debug("xpc.scoped_connection_interrupted action=reopen_existing_connection")
+      guard let scopedConnection else { return }
+      state?.connectionInterrupted(scopedConnection)
+    }
+    scopedConnection.invalidationHandler = { [weak state, weak scopedConnection] in
+      log.debug("xpc.scoped_connection_invalidated action=cancel_scope")
+      guard let scopedConnection else { return }
+      state?.connectionInvalidated(scopedConnection)
+    }
+    self.beforeRequestScopeRegistration?()
+
+    self.lock.lock()
+    if self.requestScopesShutDown {
+      self.lock.unlock()
+      if case .cancelled(let connection) = state.cancel(owner: ObjectIdentifier(self)) {
+        connection?.invalidate()
+      }
+      log.debug(
+        "xpc.request_scope.creation_cancelled scope_id=\(identifier, privacy: .public) reason=concurrent_client_shutdown action=invalidate_scoped_connection"
+      )
+      return SMCFanXPCRequestScope(state: state)
+    }
+    self.requestScopeStates.removeAll { $0.state == nil }
+    self.requestScopeStates.append(WeakRequestScopeState(state: state))
+    scopedConnection.resume()
+    self.lock.unlock()
+    let scope = SMCFanXPCRequestScope(state: state)
+    log.debug(
+      "xpc.request_scope.created scope_id=\(identifier, privacy: .public) action=create_scoped_connection"
+    )
+    return scope
+  }
+
+  public func cancelRequests(in scope: SMCFanXPCRequestScope) {
+    switch scope.state.cancel(owner: ObjectIdentifier(self)) {
+    case .foreignOwner:
+      log.error("xpc.request_scope.cancel_ignored reason=foreign_owner")
+    case .alreadyCancelled:
+      log.debug(
+        "xpc.request_scope.cancel_ignored reason=already_cancelled scope_id=\(scope.state.identifier, privacy: .public)"
+      )
+    case .cancelled(let connection):
+      connection?.invalidate()
+      log.debug(
+        "xpc.request_scope.cancelled scope_id=\(scope.state.identifier, privacy: .public) action=invalidate_scoped_connection"
+      )
+    }
   }
 
   // MARK: - Connection management
 
   private func ensureConnection() -> NSXPCConnection {
     self.lock.lock()
-    if let conn = self.connection {
-      self.lock.unlock()
-      return conn
-    }
-    let conn: NSXPCConnection
-    if let connectionFactory {
-      conn = connectionFactory()
-    } else {
-      conn = NSXPCConnection(
-        machServiceName: self.helperBundleID,
-        options: .privileged
+    let (conn, created) = self.ensureConnectionLocked()
+    self.lock.unlock()
+    if created {
+      log.debug(
+        "xpc.connection_created bundle_id=\(self.helperBundleID, privacy: .public)"
       )
     }
+    return conn
+  }
+
+  private func ensureConnectionLocked() -> (connection: NSXPCConnection, created: Bool) {
+    if let conn = self.connection {
+      return (conn, false)
+    }
+    let conn = self.makeConnection()
     conn.remoteObjectInterface = NSXPCInterface(with: SMCFanHelperProtocol.self)
 
     conn.interruptionHandler = { [weak self] in
       log.debug("xpc.connection_interrupted action=reopen_on_next_call")
       guard let self else { return }
       lock.lock()
-      smcOpened = false
-      registered = false
+      if connection === conn {
+        smcOpened = false
+        registered = false
+      }
       lock.unlock()
     }
 
@@ -273,19 +532,37 @@ public final class SMCFanXPCClient: @unchecked Sendable {
       log.debug("xpc.connection_invalidated action=recreate_on_next_call")
       guard let self else { return }
       lock.lock()
-      connection = nil
-      smcOpened = false
-      registered = false
+      if connection === conn {
+        connection = nil
+        smcOpened = false
+        registered = false
+      }
       lock.unlock()
     }
 
     conn.resume()
     self.connection = conn
-    self.lock.unlock()
-    log.debug(
-      "xpc.connection_created bundle_id=\(self.helperBundleID, privacy: .public)"
-    )
-    return conn
+    return (conn, true)
+  }
+
+  private func makeConnection() -> NSXPCConnection {
+    self.connectionFactory()
+  }
+
+  private func isOpened(scope: SMCFanXPCRequestScope) throws -> Bool {
+    try scope.state.isOpened(owner: ObjectIdentifier(self))
+  }
+
+  private func markOpened(scope: SMCFanXPCRequestScope) throws {
+    try scope.state.markOpened(owner: ObjectIdentifier(self))
+  }
+
+  private func isRegistered(scope: SMCFanXPCRequestScope) throws -> Bool {
+    try scope.state.isRegistered(owner: ObjectIdentifier(self))
+  }
+
+  private func markRegistered(scope: SMCFanXPCRequestScope) throws {
+    try scope.state.markRegistered(owner: ObjectIdentifier(self))
   }
 
   private func markOpened() {
@@ -329,6 +606,22 @@ public final class SMCFanXPCClient: @unchecked Sendable {
     log.debug("xpc.smc_opened")
   }
 
+  private func ensureOpened(scope: SMCFanXPCRequestScope) async throws {
+    if try self.isOpened(scope: scope) { return }
+    try await self.callVoid(
+      scope: scope,
+      opLabel: "smcOpen",
+      skipEnsureOpen: true,
+      skipEnsureRegistered: true
+    ) { proxy, reply in
+      proxy.smcOpen(reply: reply)
+    }
+    try self.markOpened(scope: scope)
+    log.debug(
+      "xpc.smc_opened scope_id=\(scope.state.identifier, privacy: .public)"
+    )
+  }
+
   private func ensureRegistered() async throws {
     guard let name = self.clientName else { return }
     if self.isRegistered() { return }
@@ -337,6 +630,23 @@ public final class SMCFanXPCClient: @unchecked Sendable {
     }
     self.markRegistered()
     log.debug("xpc.client_registered name=\(name, privacy: .public)")
+  }
+
+  private func ensureRegistered(scope: SMCFanXPCRequestScope) async throws {
+    guard let name = self.clientName else { return }
+    if try self.isRegistered(scope: scope) { return }
+    try await self.callVoid(
+      scope: scope,
+      opLabel: "smcRegisterClient",
+      skipEnsureOpen: true,
+      skipEnsureRegistered: true
+    ) { proxy, reply in
+      proxy.smcRegisterClient(name: name, reply: reply)
+    }
+    try self.markRegistered(scope: scope)
+    log.debug(
+      "xpc.client_registered name=\(name, privacy: .public) scope_id=\(scope.state.identifier, privacy: .public)"
+    )
   }
 
   private func ensureOpenedSync() throws {
@@ -370,7 +680,7 @@ public final class SMCFanXPCClient: @unchecked Sendable {
 
   public func getHelperIdentity() async throws -> SMCFanHelperIdentity {
     let requestTimeout = self.identityTimeout
-    let requestState = IdentityRequestState()
+    let requestState = AsyncRequestState<SMCFanHelperIdentity>()
     log.debug(
       "xpc.helper_identity.request timeout_seconds=\(requestTimeout, privacy: .public)"
     )
@@ -385,7 +695,7 @@ public final class SMCFanXPCClient: @unchecked Sendable {
   }
 
   private func performHelperIdentityRequest(
-    requestState: IdentityRequestState,
+    requestState: AsyncRequestState<SMCFanHelperIdentity>,
     timeout: TimeInterval
   ) async throws -> SMCFanHelperIdentity {
     try Task.checkCancellation()
@@ -401,7 +711,7 @@ public final class SMCFanXPCClient: @unchecked Sendable {
   }
 
   private func scheduleHelperIdentityTimeout(
-    requestState: IdentityRequestState,
+    requestState: AsyncRequestState<SMCFanHelperIdentity>,
     timeout: TimeInterval
   ) {
     DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + timeout) {
@@ -415,7 +725,9 @@ public final class SMCFanXPCClient: @unchecked Sendable {
     }
   }
 
-  private func sendHelperIdentityRequest(requestState: IdentityRequestState) {
+  private func sendHelperIdentityRequest(
+    requestState: AsyncRequestState<SMCFanHelperIdentity>
+  ) {
     let xpcConnection = self.ensureConnection()
     let proxy = xpcConnection.remoteObjectProxyWithErrorHandler { error in
       requestState.complete(with: .failure(SMCXPCError(error.localizedDescription))) {
@@ -455,7 +767,9 @@ public final class SMCFanXPCClient: @unchecked Sendable {
     }
   }
 
-  private static func cancelHelperIdentityRequest(_ requestState: IdentityRequestState) {
+  private static func cancelHelperIdentityRequest(
+    _ requestState: AsyncRequestState<SMCFanHelperIdentity>
+  ) {
     requestState.complete(with: .failure(CancellationError())) {
       log.debug("xpc.helper_identity.cancelled")
     }
@@ -476,6 +790,13 @@ public final class SMCFanXPCClient: @unchecked Sendable {
   public func getFanCount() async throws -> UInt {
     try await self.ensureOpened()
     return try await self.call { proxy, reply in proxy.smcGetFanCount(reply: reply) }
+  }
+
+  public func getFanCount(scope: SMCFanXPCRequestScope) async throws -> UInt {
+    try await self.ensureOpened(scope: scope)
+    return try await self.call(scope: scope, opLabel: "getFanCount") { proxy, reply in
+      proxy.smcGetFanCount(reply: reply)
+    }
   }
 
   public func getFanInfo(_ index: UInt) async throws -> FanInfo {
@@ -536,6 +857,25 @@ public final class SMCFanXPCClient: @unchecked Sendable {
     try await self.ensureOpened()
     try await self.ensureRegistered()
     try await self.callArbitrated(opLabel: "setFanAuto[\(index)]") { proxy, reply in
+      proxy.smcSetFanAuto(index, priority: priority, reply: reply)
+    }
+  }
+
+  public func setFanAuto(_ index: UInt, scope: SMCFanXPCRequestScope) async throws {
+    try await self.setFanAuto(index, priority: self.defaultPriority, scope: scope)
+  }
+
+  public func setFanAuto(
+    _ index: UInt,
+    priority: Int,
+    scope: SMCFanXPCRequestScope
+  ) async throws {
+    try await self.ensureOpened(scope: scope)
+    try await self.ensureRegistered(scope: scope)
+    try await self.callArbitrated(
+      scope: scope,
+      opLabel: "setFanAuto[\(index)]"
+    ) { proxy, reply in
       proxy.smcSetFanAuto(index, priority: priority, reply: reply)
     }
   }
@@ -709,6 +1049,277 @@ public final class SMCFanXPCClient: @unchecked Sendable {
 
   // MARK: - Async helpers
 
+  private func waitBeforeConnectionClaim() async {
+    if let beforeConnectionClaim {
+      await beforeConnectionClaim()
+    }
+  }
+
+  private func dispatchScopedAfterClaim(
+    scope: SMCFanXPCRequestScope,
+    opLabel: String,
+    errorHandler: @escaping @Sendable (Error) -> Void,
+    dispatch: (SMCFanHelperProtocol) -> Void
+  ) throws {
+    do {
+      let scopedConnection = try scope.state.claimConnection(owner: ObjectIdentifier(self))
+      try self.dispatch(
+        on: scopedConnection,
+        errorHandler: errorHandler,
+        dispatch: dispatch
+      )
+    } catch {
+      if error is CancellationError {
+        log.debug(
+          "xpc.request_scope.dispatch_cancelled op=\(opLabel, privacy: .public) scope_id=\(scope.state.identifier, privacy: .public)"
+        )
+      }
+      throw error
+    }
+  }
+
+  private func dispatch(
+    on connection: NSXPCConnection,
+    errorHandler: @escaping @Sendable (Error) -> Void,
+    dispatch: (SMCFanHelperProtocol) -> Void
+  ) throws {
+    if let proxyFactory = remoteProxyFactory {
+      dispatch(proxyFactory(connection, errorHandler))
+      return
+    }
+    let proxy = connection.remoteObjectProxyWithErrorHandler(errorHandler)
+    guard let typedProxy = proxy as? SMCFanHelperProtocol else {
+      throw SMCXPCError("Failed to get proxy")
+    }
+    dispatch(typedProxy)
+  }
+
+  private func performScopedRequest<Value: Sendable>(
+    scope: SMCFanXPCRequestScope,
+    opLabel: String,
+    dispatchRequest: @escaping @Sendable (AsyncRequestState<Value>) -> Void
+  ) async throws -> Value {
+    let requestState = AsyncRequestState<Value>()
+    let requestTimeout = self.syncTimeout
+    return try await withTaskCancellationHandler {
+      try Task.checkCancellation()
+      await self.waitBeforeConnectionClaim()
+      try Task.checkCancellation()
+      do {
+        let value = try await withCheckedThrowingContinuation { continuation in
+          requestState.install(continuation)
+          guard !Task.isCancelled else {
+            self.cancelScopedRequest(requestState, scope: scope, opLabel: opLabel)
+            return
+          }
+          self.scheduleScopedRequestTimeout(
+            requestState,
+            scope: scope,
+            opLabel: opLabel,
+            timeout: requestTimeout
+          )
+          dispatchRequest(requestState)
+        }
+        await self.waitAfterScopedRequestCompletion()
+        return value
+      } catch {
+        await self.waitAfterScopedRequestCompletion()
+        throw error
+      }
+    } onCancel: {
+      self.cancelScopedRequest(requestState, scope: scope, opLabel: opLabel)
+    }
+  }
+
+  private func waitAfterScopedRequestCompletion() async {
+    if let afterScopedRequestCompletion = self.afterScopedRequestCompletion {
+      await afterScopedRequestCompletion()
+    }
+  }
+
+  private func scheduleScopedRequestTimeout<Value: Sendable>(
+    _ requestState: AsyncRequestState<Value>,
+    scope: SMCFanXPCRequestScope,
+    opLabel: String,
+    timeout: TimeInterval
+  ) {
+    DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + timeout) {
+      let timeoutError = SMCXPCTimeoutError(label: opLabel, seconds: timeout)
+      requestState.complete(with: .failure(timeoutError)) {
+        log.error(
+          "xpc.request_scope.timed_out op=\(opLabel, privacy: .public) scope_id=\(scope.state.identifier, privacy: .public) seconds=\(timeout, privacy: .public)"
+        )
+        self.cancelRequests(in: scope)
+      }
+    }
+  }
+
+  private func cancelScopedRequest<Value: Sendable>(
+    _ requestState: AsyncRequestState<Value>,
+    scope: SMCFanXPCRequestScope,
+    opLabel: String
+  ) {
+    requestState.complete(with: .failure(CancellationError())) {
+      log.debug(
+        "xpc.request_scope.task_cancelled op=\(opLabel, privacy: .public) scope_id=\(scope.state.identifier, privacy: .public)"
+      )
+      self.cancelRequests(in: scope)
+    }
+  }
+
+  private func call<T: Sendable>(
+    scope: SMCFanXPCRequestScope,
+    opLabel: String,
+    _ block:
+      @escaping @Sendable (
+        SMCFanHelperProtocol,
+        @escaping @Sendable (Bool, T, String?) -> Void
+      ) -> Void
+  ) async throws -> T {
+    try await self.performScopedRequest(scope: scope, opLabel: opLabel) { requestState in
+      do {
+        try self.dispatchScopedAfterClaim(
+          scope: scope,
+          opLabel: opLabel,
+          errorHandler: { error in
+            requestState.complete(
+              with: .failure(self.scopedProxyError(error, scope: scope))
+            ) {
+              if scope.state.isCancelled {
+                log.debug(
+                  "xpc.request_scope.proxy_cancelled op=\(opLabel, privacy: .public) scope_id=\(scope.state.identifier, privacy: .public)"
+                )
+              }
+            }
+          },
+          dispatch: { proxy in
+            block(proxy) { success, value, error in
+              if scope.state.isCancelled {
+                requestState.complete(with: .failure(CancellationError()))
+              } else if success {
+                requestState.complete(with: .success(value))
+              } else {
+                requestState.complete(with: .failure(SMCXPCError(error)))
+              }
+            }
+          })
+      } catch {
+        log.error(
+          "xpc.request_scope.call_failed op=\(opLabel, privacy: .public) reason=\(String(describing: error), privacy: .private) action=resume_error"
+        )
+        requestState.complete(with: .failure(error))
+      }
+    }
+  }
+
+  private func scopedProxyError(_ error: Error, scope: SMCFanXPCRequestScope) -> Error {
+    if scope.state.isCancelled {
+      return CancellationError()
+    }
+    return SMCXPCError(error.localizedDescription)
+  }
+
+  private func scopedReplyError(_ error: String?, scope: SMCFanXPCRequestScope) -> Error {
+    if scope.state.isCancelled {
+      return CancellationError()
+    }
+    return SMCXPCError(error)
+  }
+
+  private func callVoid(
+    scope: SMCFanXPCRequestScope,
+    opLabel: String,
+    skipEnsureOpen: Bool = false,
+    skipEnsureRegistered: Bool = false,
+    _ block:
+      @escaping @Sendable (
+        SMCFanHelperProtocol,
+        @escaping @Sendable (Bool, String?) -> Void
+      ) -> Void
+  ) async throws {
+    if !skipEnsureOpen {
+      try await self.ensureOpened(scope: scope)
+    }
+    if !skipEnsureRegistered {
+      try await self.ensureRegistered(scope: scope)
+    }
+    let _: Void = try await self.performScopedRequest(
+      scope: scope,
+      opLabel: opLabel
+    ) { requestState in
+      do {
+        try self.dispatchScopedAfterClaim(
+          scope: scope,
+          opLabel: opLabel,
+          errorHandler: { error in
+            requestState.complete(
+              with: .failure(self.scopedProxyError(error, scope: scope))
+            )
+          },
+          dispatch: { proxy in
+            block(proxy) { success, error in
+              if success, !scope.state.isCancelled {
+                requestState.complete(with: .success(()))
+              } else {
+                requestState.complete(
+                  with: .failure(self.scopedReplyError(error, scope: scope))
+                )
+              }
+            }
+          })
+      } catch {
+        log.error(
+          "xpc.request_scope.call_failed op=\(opLabel, privacy: .public) reason=\(String(describing: error), privacy: .private) action=resume_error"
+        )
+        requestState.complete(with: .failure(error))
+      }
+    }
+  }
+
+  private func callArbitrated(
+    scope: SMCFanXPCRequestScope,
+    opLabel: String,
+    _ block:
+      @escaping @Sendable (
+        SMCFanHelperProtocol,
+        @escaping @Sendable (Bool, Bool, String?) -> Void
+      ) -> Void
+  ) async throws {
+    let _: Void = try await self.performScopedRequest(
+      scope: scope,
+      opLabel: opLabel
+    ) { requestState in
+      do {
+        try self.dispatchScopedAfterClaim(
+          scope: scope,
+          opLabel: opLabel,
+          errorHandler: { error in
+            requestState.complete(
+              with: .failure(self.scopedProxyError(error, scope: scope))
+            )
+          },
+          dispatch: { proxy in
+            block(proxy) { success, preempted, error in
+              if scope.state.isCancelled {
+                requestState.complete(with: .failure(CancellationError()))
+              } else if success {
+                requestState.complete(with: .success(()))
+              } else if preempted {
+                requestState.complete(with: .failure(SMCXPCConflictError(error)))
+              } else {
+                requestState.complete(with: .failure(SMCXPCError(error)))
+              }
+            }
+          })
+      } catch {
+        log.error(
+          "xpc.request_scope.call_failed op=\(opLabel, privacy: .public) reason=\(String(describing: error), privacy: .private) action=resume_error"
+        )
+        requestState.complete(with: .failure(error))
+      }
+    }
+  }
+
   private func call<T: Sendable>(
     _ block:
       @escaping (
@@ -719,27 +1330,34 @@ public final class SMCFanXPCClient: @unchecked Sendable {
     let conn = self.ensureConnection()
     return try await withCheckedThrowingContinuation { continuation in
       let once = ResumeGuard()
-      let proxy = conn.remoteObjectProxyWithErrorHandler { error in
+      do {
+        try self.dispatch(
+          on: conn,
+          errorHandler: { error in
+            once.tryResume {
+              log.error(
+                "xpc.proxy_error error=\(error.localizedDescription, privacy: .public)"
+              )
+              continuation.resume(throwing: SMCXPCError(error.localizedDescription))
+            }
+          },
+          dispatch: { proxy in
+            block(proxy) { success, value, error in
+              once.tryResume {
+                if success {
+                  continuation.resume(returning: value)
+                } else {
+                  continuation.resume(throwing: SMCXPCError(error))
+                }
+              }
+            }
+          })
+      } catch {
+        log.error(
+          "xpc.call_failed reason=\(String(describing: error), privacy: .private) action=resume_error"
+        )
         once.tryResume {
-          log.error(
-            "xpc.proxy_error error=\(error.localizedDescription, privacy: .public)"
-          )
-          continuation.resume(throwing: SMCXPCError(error.localizedDescription))
-        }
-      }
-      guard let typedProxy = proxy as? SMCFanHelperProtocol else {
-        once.tryResume {
-          continuation.resume(throwing: SMCXPCError("Failed to get proxy"))
-        }
-        return
-      }
-      block(typedProxy) { success, value, error in
-        once.tryResume {
-          if success {
-            continuation.resume(returning: value)
-          } else {
-            continuation.resume(throwing: SMCXPCError(error))
-          }
+          continuation.resume(throwing: error)
         }
       }
     }
@@ -763,27 +1381,34 @@ public final class SMCFanXPCClient: @unchecked Sendable {
     let conn = self.ensureConnection()
     try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
       let once = ResumeGuard()
-      let proxy = conn.remoteObjectProxyWithErrorHandler { error in
+      do {
+        try self.dispatch(
+          on: conn,
+          errorHandler: { error in
+            once.tryResume {
+              log.error(
+                "xpc.proxy_error error=\(error.localizedDescription, privacy: .public)"
+              )
+              continuation.resume(throwing: SMCXPCError(error.localizedDescription))
+            }
+          },
+          dispatch: { proxy in
+            block(proxy) { success, error in
+              once.tryResume {
+                if success {
+                  continuation.resume()
+                } else {
+                  continuation.resume(throwing: SMCXPCError(error))
+                }
+              }
+            }
+          })
+      } catch {
+        log.error(
+          "xpc.call_failed op=void reason=\(String(describing: error), privacy: .private) action=resume_error"
+        )
         once.tryResume {
-          log.error(
-            "xpc.proxy_error error=\(error.localizedDescription, privacy: .public)"
-          )
-          continuation.resume(throwing: SMCXPCError(error.localizedDescription))
-        }
-      }
-      guard let typedProxy = proxy as? SMCFanHelperProtocol else {
-        once.tryResume {
-          continuation.resume(throwing: SMCXPCError("Failed to get proxy"))
-        }
-        return
-      }
-      block(typedProxy) { success, error in
-        once.tryResume {
-          if success {
-            continuation.resume()
-          } else {
-            continuation.resume(throwing: SMCXPCError(error))
-          }
+          continuation.resume(throwing: error)
         }
       }
     }
@@ -803,29 +1428,36 @@ public final class SMCFanXPCClient: @unchecked Sendable {
     let conn = self.ensureConnection()
     try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
       let once = ResumeGuard()
-      let proxy = conn.remoteObjectProxyWithErrorHandler { error in
+      do {
+        try self.dispatch(
+          on: conn,
+          errorHandler: { error in
+            once.tryResume {
+              log.error(
+                "xpc.proxy_error op=\(opLabel, privacy: .public) error=\(error.localizedDescription, privacy: .public)"
+              )
+              continuation.resume(throwing: SMCXPCError(error.localizedDescription))
+            }
+          },
+          dispatch: { proxy in
+            block(proxy) { success, preempted, error in
+              once.tryResume {
+                if success {
+                  continuation.resume()
+                } else if preempted {
+                  continuation.resume(throwing: SMCXPCConflictError(error))
+                } else {
+                  continuation.resume(throwing: SMCXPCError(error))
+                }
+              }
+            }
+          })
+      } catch {
+        log.error(
+          "xpc.call_failed op=\(opLabel, privacy: .public) reason=\(String(describing: error), privacy: .private) action=resume_error"
+        )
         once.tryResume {
-          log.error(
-            "xpc.proxy_error op=\(opLabel, privacy: .public) error=\(error.localizedDescription, privacy: .public)"
-          )
-          continuation.resume(throwing: SMCXPCError(error.localizedDescription))
-        }
-      }
-      guard let typedProxy = proxy as? SMCFanHelperProtocol else {
-        once.tryResume {
-          continuation.resume(throwing: SMCXPCError("Failed to get proxy"))
-        }
-        return
-      }
-      block(typedProxy) { success, preempted, error in
-        once.tryResume {
-          if success {
-            continuation.resume()
-          } else if preempted {
-            continuation.resume(throwing: SMCXPCConflictError(error))
-          } else {
-            continuation.resume(throwing: SMCXPCError(error))
-          }
+          continuation.resume(throwing: error)
         }
       }
     }
