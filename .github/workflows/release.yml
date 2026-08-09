@@ -49,8 +49,8 @@ jobs:
       ephemeral: ${{ github.event_name == 'pull_request' }}
       release-track: ${{ github.event_name == 'workflow_dispatch' && inputs.release-track || '' }}
       release-on-merge: manual
-      signing-identity-name: "Developer ID Application: Alex Goodkind (H3BMXM4W7H)"
-      apple-team-id: H3BMXM4W7H
+      signing-identity-name: ${{ vars.APPLE_DEVELOPER_ID_IDENTITY }}
+      apple-team-id: ${{ vars.APPLE_TEAM_ID }}
       notarize-pattern: "*.zip"
       sbom-subject-path: "Products/SMCFanHelper.app"
     secrets: inherit

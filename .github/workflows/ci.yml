@@ -22,6 +22,11 @@ jobs:
       # The privileged LaunchDaemon helper requires a real Developer ID
       # signature to register via SMAppService, so CI signs like release does.
       import-signing-cert: true
-      signing-identity-name: "Developer ID Application: Alex Goodkind (H3BMXM4W7H)"
-      apple-team-id: H3BMXM4W7H
+      # The identity and team come from repository variables, so rotating a
+      # certificate or moving teams is one settings edit rather than a commit in
+      # every repository. Each certificate keeps its own variable because a
+      # release signs Developer ID while an unregistered CI runner signs Apple
+      # Distribution, and one shared slot for both was a defect once already.
+      signing-identity-name: ${{ vars.APPLE_DEVELOPER_ID_IDENTITY }}
+      apple-team-id: ${{ vars.APPLE_TEAM_ID }}
     secrets: inherit
