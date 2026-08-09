@@ -4,6 +4,11 @@ on:
   push:
     tags:
       - "[0-9]+.[0-9]+.[0-9]+"
+  # A pull request runs the whole signed pipeline and stops before publishing, so
+  # a change that breaks signing, notarization, or packaging fails here instead of
+  # at the tag. Without it the first thing to exercise the release path is the tag
+  # itself, and a broken release is found only once it cannot be undone.
+  pull_request:
   workflow_dispatch:
     inputs:
       release-track:
@@ -15,6 +20,12 @@ on:
           - stable
           - prerelease
 
+# One group per ref. A new pull request push cancels its own superseded dry run,
+# while a tag push is a real release and never cancels an in-flight publish.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 # The caller must grant every permission the called workflow's jobs request.
 permissions:
   contents: write
@@ -24,8 +35,18 @@ permissions:
 
 jobs:
   release:
+    # A fork pull request cannot read this repository's signing secrets, so the
+    # signed run would fail for a reason the contributor cannot fix. Dependabot
+    # branches live in this repository and pass that check, but a Dependabot pull
+    # request reads its own secret store rather than the Actions one, so the shared
+    # workflow's signed dry run would exit on missing credentials every time.
+    if: >-
+      ${{ github.event_name != 'pull_request'
+      || (github.event.pull_request.head.repo.full_name == github.repository
+      && github.actor != 'dependabot[bot]') }}
     uses: agoodkind/swift-makefile/.github/workflows/_release.yml@main
     with:
+      ephemeral: ${{ github.event_name == 'pull_request' }}
       release-track: ${{ github.event_name == 'workflow_dispatch' && inputs.release-track || '' }}
       release-on-merge: manual
       signing-identity-name: "Developer ID Application: Alex Goodkind (H3BMXM4W7H)"
