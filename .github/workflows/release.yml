@@ -44,7 +44,10 @@ jobs:
       ${{ github.event_name != 'pull_request'
       || (github.event.pull_request.head.repo.full_name == github.repository
       && github.actor != 'dependabot[bot]') }}
-    uses: agoodkind/swift-makefile/.github/workflows/_release.yml@main
+    # PROBE ONLY, DO NOT MERGE. Pins the engine to the release-build-generates
+    # branch so this pull request's signed dry run measures whether that change
+    # breaks this repository's release. Revert to @main before merging anything.
+    uses: agoodkind/swift-makefile/.github/workflows/_release.yml@release-build-generates
     with:
       ephemeral: ${{ github.event_name == 'pull_request' }}
       release-track: ${{ github.event_name == 'workflow_dispatch' && inputs.release-track || '' }}
