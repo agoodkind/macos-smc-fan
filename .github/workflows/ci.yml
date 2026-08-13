@@ -32,4 +32,9 @@ jobs:
       # Distribution, and one shared slot for both was a defect once already.
       signing-identity-name: ${{ vars.APPLE_DEVELOPER_ID_IDENTITY }}
       apple-team-id: ${{ vars.APPLE_TEAM_ID }}
+      # Run the signed release stages inside Verify on the machine whose
+      # compilation cache the verify build just filled, so a pull request takes
+      # one macOS slot for the whole signed pipeline instead of two.
+      release-dry-run: true
+      notarize-pattern: "*.zip"
     secrets: inherit
