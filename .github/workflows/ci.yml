@@ -11,6 +11,9 @@ concurrency:
 permissions:
   contents: read
   actions: read
+  # The engine's Verify job publishes one check run per stage; a called workflow
+  # cannot hold a permission the caller withheld.
+  checks: write
 
 jobs:
   # The caller job id is the middle segment of every reusable-workflow status
