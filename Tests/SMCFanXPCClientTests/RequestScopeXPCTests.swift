@@ -29,7 +29,7 @@ struct RequestScopeXPCTests {
     let scope = await scopeTask.value
     let requestTask = Task { try await fixture.client.getFanCount(scope: scope) }
 
-    #expect(scope.state.isCancelled)
+    #expect(scope.state.isTerminal)
     #expect(await fanCountOutcome(from: requestTask) == .cancelled)
     #expect(fixture.connectionFactory.creationCount == 1)
     #expect(fixture.helper.counts == RequestCounts())
@@ -42,7 +42,7 @@ struct RequestScopeXPCTests {
     let scope = fixture.client.makeRequestScope()
     let requestTask = Task { try await fixture.client.getFanCount(scope: scope) }
 
-    #expect(!scope.state.isCancelled)
+    #expect(!scope.state.isTerminal)
     #expect(await fanCountOutcome(from: requestTask) == .value(2))
     #expect(fixture.connectionFactory.creationCount == 1)
     #expect(fixture.helper.counts == RequestCounts(open: 1, fanCount: 1))
@@ -62,8 +62,8 @@ struct RequestScopeXPCTests {
     let laterScope = fixture.client.makeRequestScope()
     let requestTask = Task { try await fixture.client.getFanCount(scope: laterScope) }
 
-    #expect(activeScope.state.isCancelled)
-    #expect(laterScope.state.isCancelled)
+    #expect(activeScope.state.isTerminal)
+    #expect(laterScope.state.isTerminal)
     #expect(await fanCountOutcome(from: requestTask) == .cancelled)
     #expect(invalidationObserved)
     #expect(fixture.connectionAcceptor.invalidationCount == 1)
@@ -99,11 +99,11 @@ struct RequestScopeXPCTests {
     let scope = fixture.client.makeRequestScope()
 
     fixture.connectionFactory.invalidateConnection(at: 0)
-    let cancellationObserved = await waitForCancellation(of: scope)
+    let terminalObserved = await waitForTerminal(of: scope)
     let requestTask = Task { try await fixture.client.getFanCount(scope: scope) }
 
-    #expect(cancellationObserved)
-    #expect(await fanCountOutcome(from: requestTask) == .cancelled)
+    #expect(terminalObserved)
+    #expect(await fanCountOutcome(from: requestTask) == .invalidated)
     #expect(fixture.connectionFactory.creationCount == 1)
     #expect(fixture.helper.counts == RequestCounts())
   }

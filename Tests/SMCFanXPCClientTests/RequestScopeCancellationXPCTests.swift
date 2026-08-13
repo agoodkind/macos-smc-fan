@@ -27,7 +27,7 @@ struct RequestScopeCancellationXPCTests {
     requestTask.cancel()
 
     #expect(await voidOutcome(from: requestTask) == .cancelled)
-    #expect(scope.state.isCancelled)
+    #expect(scope.state.isTerminal)
     #expect(fixture.connectionFactory.creationCount == 1)
   }
 
@@ -41,13 +41,13 @@ struct RequestScopeCancellationXPCTests {
     await fixture.completionGate.waitUntilBlocked()
     requestTask.cancel()
 
-    #expect(!scope.state.isCancelled)
+    #expect(!scope.state.isTerminal)
     await fixture.completionGate.release()
     #expect(await fanCountOutcome(from: requestTask) == .value(2))
 
     let repeatedRequest = Task { try await fixture.client.getFanCount(scope: scope) }
     #expect(await fanCountOutcome(from: repeatedRequest) == .value(2))
-    #expect(!scope.state.isCancelled)
+    #expect(!scope.state.isTerminal)
     #expect(fixture.connectionAcceptor.invalidationCount == 0)
     #expect(fixture.connectionFactory.creationCount == 1)
     #expect(fixture.helper.counts == RequestCounts(open: 1, fanCount: 2))
@@ -65,13 +65,13 @@ struct RequestScopeCancellationXPCTests {
     let requestTask = Task { try await fixture.client.getFanCount(scope: scope) }
 
     await fixture.completionGate.waitUntilBlocked()
-    #expect(scope.state.isCancelled)
+    #expect(scope.state.isTerminal)
     requestTask.cancel()
     await fixture.completionGate.release()
 
     #expect(await fanCountOutcome(from: requestTask) == .timeout("getFanCount"))
     let invalidationObserved = await fixture.connectionAcceptor.waitForInvalidationObservation()
-    #expect(scope.state.isCancelled)
+    #expect(scope.state.isTerminal)
     #expect(invalidationObserved)
     #expect(fixture.connectionAcceptor.invalidationCount == 1)
     #expect(fixture.connectionFactory.creationCount == 1)
@@ -94,7 +94,7 @@ struct RequestScopeCancellationXPCTests {
     let invalidationObserved = await fixture.connectionAcceptor.waitForInvalidationObservation()
     let repeatedRequest = Task { try await fixture.client.getFanCount(scope: scope) }
 
-    #expect(scope.state.isCancelled)
+    #expect(scope.state.isTerminal)
     #expect(await fanCountOutcome(from: repeatedRequest) == .cancelled)
     #expect(invalidationObserved)
     #expect(fixture.connectionAcceptor.invalidationCount == 1)
@@ -116,7 +116,7 @@ struct RequestScopeCancellationXPCTests {
 
     #expect(await fanCountOutcome(from: requestTask) == .timeout("smcOpen"))
     let invalidationObserved = await fixture.connectionAcceptor.waitForInvalidationObservation()
-    #expect(scope.state.isCancelled)
+    #expect(scope.state.isTerminal)
     #expect(invalidationObserved)
     #expect(fixture.connectionAcceptor.invalidationCount == 1)
     #expect(fixture.connectionFactory.creationCount == 1)
@@ -137,7 +137,7 @@ struct RequestScopeCancellationXPCTests {
 
     #expect(await voidOutcome(from: requestTask) == .timeout("setFanAuto[0]"))
     let invalidationObserved = await fixture.connectionAcceptor.waitForInvalidationObservation()
-    #expect(scope.state.isCancelled)
+    #expect(scope.state.isTerminal)
     #expect(invalidationObserved)
     #expect(fixture.connectionAcceptor.invalidationCount == 1)
     #expect(fixture.connectionFactory.creationCount == 1)

@@ -36,6 +36,17 @@ public struct SMCXPCTransportError: LocalizedError, Sendable {
   }
 }
 
+/// Thrown when a request scope's connection was invalidated because the
+/// helper endpoint disappeared or the client shut down. Distinct from
+/// CancellationError, which only ever means the caller cancelled the work.
+public struct SMCXPCConnectionInvalidatedError: LocalizedError, Sendable {
+  public var errorDescription: String? {
+    "SMC helper connection was invalidated"
+  }
+
+  public init() {}
+}
+
 /// Thrown when a sync call exceeds its bounded wait.
 public struct SMCXPCTimeoutError: LocalizedError, Sendable {
   public let label: String
@@ -159,6 +170,11 @@ final class RequestScopeState: @unchecked Sendable {
     case foreignOwner
   }
 
+  enum TerminalReason {
+    case cancelled
+    case invalidated
+  }
+
   let identifier: UInt64
 
   private let lock = NSLock()
@@ -166,7 +182,7 @@ final class RequestScopeState: @unchecked Sendable {
   private var connection: NSXPCConnection?
   private var opened = false
   private var registered = false
-  private var cancelled = false
+  private var terminalReason: TerminalReason?
 
   init(identifier: UInt64, owner: ObjectIdentifier, connection: NSXPCConnection) {
     self.identifier = identifier
@@ -178,7 +194,7 @@ final class RequestScopeState: @unchecked Sendable {
     self.identifier = identifier
     self.owner = owner
     self.connection = nil
-    self.cancelled = true
+    self.terminalReason = .cancelled
   }
 
   deinit {
@@ -189,11 +205,26 @@ final class RequestScopeState: @unchecked Sendable {
     ownedConnection?.invalidate()
   }
 
-  var isCancelled: Bool {
+  var isTerminal: Bool {
     lock.lock()
-    let current = cancelled
+    let current = terminalReason != nil
     lock.unlock()
     return current
+  }
+
+  /// Error matching why the scope became terminal, or nil while active.
+  var terminalError: Error? {
+    lock.lock()
+    let reason = terminalReason
+    lock.unlock()
+    switch reason {
+    case .cancelled:
+      return CancellationError()
+    case .invalidated:
+      return SMCXPCConnectionInvalidatedError()
+    case nil:
+      return nil
+    }
   }
 
   func cancel(owner expectedOwner: ObjectIdentifier) -> CancellationResult {
@@ -202,11 +233,11 @@ final class RequestScopeState: @unchecked Sendable {
       lock.unlock()
       return .foreignOwner
     }
-    guard !cancelled else {
+    guard terminalReason == nil else {
       lock.unlock()
       return .alreadyCancelled
     }
-    cancelled = true
+    terminalReason = .cancelled
     let cancelledConnection = self.connection
     self.connection = nil
     opened = false
@@ -234,7 +265,7 @@ final class RequestScopeState: @unchecked Sendable {
   func claimConnection(owner expectedOwner: ObjectIdentifier) throws -> NSXPCConnection {
     try withActiveScope(owner: expectedOwner) {
       guard let connection else {
-        throw CancellationError()
+        throw SMCXPCConnectionInvalidatedError()
       }
       return connection
     }
@@ -255,7 +286,9 @@ final class RequestScopeState: @unchecked Sendable {
       connection = nil
       opened = false
       registered = false
-      cancelled = true
+      if terminalReason == nil {
+        terminalReason = .invalidated
+      }
     }
     lock.unlock()
   }
@@ -266,10 +299,17 @@ final class RequestScopeState: @unchecked Sendable {
   ) throws -> Value {
     lock.lock()
     defer { lock.unlock() }
-    guard owner == expectedOwner, !cancelled else {
+    guard owner == expectedOwner else {
       throw CancellationError()
     }
-    return try operation()
+    switch terminalReason {
+    case .cancelled:
+      throw CancellationError()
+    case .invalidated:
+      throw SMCXPCConnectionInvalidatedError()
+    case nil:
+      return try operation()
+    }
   }
 }
 
@@ -1085,9 +1125,9 @@ public final class SMCFanXPCClient: @unchecked Sendable {
         dispatch: dispatch
       )
     } catch {
-      if error is CancellationError {
+      if error is CancellationError || error is SMCXPCConnectionInvalidatedError {
         log.debug(
-          "xpc.request_scope.dispatch_cancelled op=\(opLabel, privacy: .public) scope_id=\(scope.state.identifier, privacy: .public)"
+          "xpc.request_scope.dispatch_terminal op=\(opLabel, privacy: .public) scope_id=\(scope.state.identifier, privacy: .public) reason=\(String(describing: error), privacy: .public)"
         )
       }
       throw error
@@ -1201,17 +1241,17 @@ public final class SMCFanXPCClient: @unchecked Sendable {
             requestState.complete(
               with: .failure(self.scopedProxyError(error, scope: scope))
             ) {
-              if scope.state.isCancelled {
+              if scope.state.isTerminal {
                 log.debug(
-                  "xpc.request_scope.proxy_cancelled op=\(opLabel, privacy: .public) scope_id=\(scope.state.identifier, privacy: .public)"
+                  "xpc.request_scope.proxy_terminal op=\(opLabel, privacy: .public) scope_id=\(scope.state.identifier, privacy: .public)"
                 )
               }
             }
           },
           dispatch: { proxy in
             block(proxy) { success, value, error in
-              if scope.state.isCancelled {
-                requestState.complete(with: .failure(CancellationError()))
+              if let terminalError = scope.state.terminalError {
+                requestState.complete(with: .failure(terminalError))
               } else if success {
                 requestState.complete(with: .success(value))
               } else {
@@ -1229,15 +1269,15 @@ public final class SMCFanXPCClient: @unchecked Sendable {
   }
 
   private func scopedProxyError(_ error: Error, scope: SMCFanXPCRequestScope) -> Error {
-    if scope.state.isCancelled {
-      return CancellationError()
+    if let terminalError = scope.state.terminalError {
+      return terminalError
     }
     return SMCXPCTransportError(error.localizedDescription)
   }
 
   private func scopedReplyError(_ error: String?, scope: SMCFanXPCRequestScope) -> Error {
-    if scope.state.isCancelled {
-      return CancellationError()
+    if let terminalError = scope.state.terminalError {
+      return terminalError
     }
     return SMCXPCError(error)
   }
@@ -1274,7 +1314,7 @@ public final class SMCFanXPCClient: @unchecked Sendable {
           },
           dispatch: { proxy in
             block(proxy) { success, error in
-              if success, !scope.state.isCancelled {
+              if success, !scope.state.isTerminal {
                 requestState.complete(with: .success(()))
               } else {
                 requestState.complete(
@@ -1316,8 +1356,8 @@ public final class SMCFanXPCClient: @unchecked Sendable {
           },
           dispatch: { proxy in
             block(proxy) { success, preempted, error in
-              if scope.state.isCancelled {
-                requestState.complete(with: .failure(CancellationError()))
+              if let terminalError = scope.state.terminalError {
+                requestState.complete(with: .failure(terminalError))
               } else if success {
                 requestState.complete(with: .success(()))
               } else if preempted {

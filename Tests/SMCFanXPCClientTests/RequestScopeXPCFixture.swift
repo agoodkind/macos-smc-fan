@@ -19,7 +19,7 @@ private let requestWatchdogSeconds: TimeInterval = 5
 // MARK: - FanCountOutcome
 
 enum FanCountOutcome: Equatable, Sendable {
-  case cancelled, watchdogExpired
+  case cancelled, invalidated, watchdogExpired
   case failure(String)
   case timeout(String)
   case transportFailure(String)
@@ -29,7 +29,7 @@ enum FanCountOutcome: Equatable, Sendable {
 // MARK: - VoidOutcome
 
 enum VoidOutcome: Equatable, Sendable {
-  case cancelled, succeeded, watchdogExpired
+  case cancelled, invalidated, succeeded, watchdogExpired
   case conflict(String)
   case failure(String)
   case timeout(String)
@@ -45,6 +45,8 @@ func fanCountOutcome(from requestTask: Task<UInt, Error>) async -> FanCountOutco
       .value(count)
     case .failure(is CancellationError):
       .cancelled
+    case .failure(is SMCXPCConnectionInvalidatedError):
+      .invalidated
     case .failure(let error as SMCXPCTimeoutError):
       .timeout(error.label)
     case .failure(let error as SMCXPCTransportError):
@@ -65,6 +67,8 @@ func voidOutcome(from requestTask: Task<Void, Error>) async -> VoidOutcome {
       .succeeded
     case .failure(is CancellationError):
       .cancelled
+    case .failure(is SMCXPCConnectionInvalidatedError):
+      .invalidated
     case .failure(let error as SMCXPCTimeoutError):
       .timeout(error.label)
     case .failure(let error as SMCXPCConflictError):
@@ -75,20 +79,20 @@ func voidOutcome(from requestTask: Task<Void, Error>) async -> VoidOutcome {
   }
 }
 
-func waitForCancellation(of scope: SMCFanXPCRequestScope) async -> Bool {
+func waitForTerminal(of scope: SMCFanXPCRequestScope) async -> Bool {
   let clock = ContinuousClock()
   let deadline = clock.now.advanced(by: .seconds(cancellationPollSeconds))
   while clock.now < deadline {
-    if scope.state.isCancelled {
+    if scope.state.isTerminal {
       return true
     }
     do {
       try await Task.sleep(for: .milliseconds(cancellationPollIntervalMilliseconds))
     } catch {
-      return scope.state.isCancelled
+      return scope.state.isTerminal
     }
   }
-  return scope.state.isCancelled
+  return scope.state.isTerminal
 }
 
 func outcomeWithWatchdog<Value: Sendable, Outcome: Sendable>(
